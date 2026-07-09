@@ -1,0 +1,102 @@
+.navGroup {
+  margin-bottom: 6px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.navGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 10px 5px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  border-radius: var(--fn-radius-md);
+  transition: background var(--fn-transition-fast);
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 3%, transparent);
+
+    .navGroupChevron {
+      opacity: 0.5;
+    }
+  }
+}
+
+.navGroupLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fn-sidebar-group-text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.navGroupChevron {
+  flex-shrink: 0;
+  color: var(--fn-sidebar-group-text);
+  opacity: 0.28;
+  transition:
+    transform 0.2s ease,
+    opacity 0.15s ease;
+}
+
+.navGroupChevronFolded {
+  transform: rotate(-90deg);
+}
+
+.navGroupItems {
+  overflow: hidden;
+}
+
+.navUpdateBadge {
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  background-color: #ff4d4f;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.navUpdateBadgeCollapsed {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  font-size: 8px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .navGroupLabel {
+    font-size: 12px;
+  }
+
+  .navUpdateBadge {
+    font-size: 10px;
+  }
+
+  .navUpdateBadgeCollapsed {
+    font-size: 9px;
+  }
+}

@@ -1,0 +1,268 @@
+.container {
+  padding: 8px 0;
+}
+
+.description {
+  margin-bottom: 20px;
+  color: var(--fn-text-tertiary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Version cards ── */
+
+.versionGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.versionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 8px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.03));
+}
+
+.versionLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.versionValue {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.notChecked {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--fn-text-tertiary);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: color-mix(in srgb, var(--fn-color-brand) 15%, transparent);
+  color: var(--fn-color-brand);
+  width: fit-content;
+}
+
+/* ── Alert banners ── */
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+
+  > svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+}
+
+.alertWarn {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: #92400e;
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+
+  @media (prefers-color-scheme: dark) {
+    color: #fcd34d;
+  }
+}
+
+.alertError {
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #991b1b;
+  border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+
+  @media (prefers-color-scheme: dark) {
+    color: #fca5a5;
+  }
+}
+
+.alertSuccess {
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+  color: #166534;
+  border: 1px solid color-mix(in srgb, #22c55e 30%, transparent);
+
+  @media (prefers-color-scheme: dark) {
+    color: #86efac;
+  }
+}
+
+.alertInfo {
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
+  color: var(--fn-text-secondary);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 25%, transparent);
+}
+
+/* ── Actions row ── */
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.btnSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--fn-transition-fast);
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.04));
+    border-color: var(--fn-text-tertiary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--fn-color-brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--fn-transition-fast);
+
+  &:hover:not(:disabled) {
+    opacity: 0.88;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* ── Progress bar ── */
+
+.progressSection {
+  margin-top: 4px;
+}
+
+.progressLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  margin-bottom: 8px;
+}
+
+.progressBar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fn-border-primary);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--fn-color-brand);
+  transition: width 0.4s ease;
+  min-width: 6%;
+}
+
+/* ── Restart command ── */
+
+.restartRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  p {
+    margin: 0;
+  }
+}
+
+.commandBlock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.commandSep {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+code {
+  font-family: var(--fn-font-mono, "SFMono-Regular", Consolas, monospace);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fn-text-primary) 10%, transparent);
+}
+
+.manualHint {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.restartSubHint {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/* ── Spinner animation ── */
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinning {
+  animation: spin 0.9s linear infinite;
+}

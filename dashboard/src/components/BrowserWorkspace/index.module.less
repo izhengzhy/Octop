@@ -1,0 +1,508 @@
+.browserWorkspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-left: 1px solid var(--fn-border-secondary, #e0e0e0);
+  background: var(--fn-bg-primary, #fff);
+  overflow: hidden;
+
+  &.hidden {
+    display: none;
+  }
+
+  &.bottom {
+    width: 100%;
+    min-height: 200px;
+    flex-shrink: 0;
+    border-left: none;
+    border-top: none;
+    overflow: hidden;
+  }
+
+  &.right {
+    min-width: 320px;
+    flex-shrink: 0;
+    border-left: none;
+    overflow: hidden;
+  }
+
+  &.popup {
+    position: fixed;
+    right: 80px;
+    bottom: 24px;
+    width: 720px;
+    height: 600px;
+    max-width: calc(100vw - 120px);
+    max-height: calc(100vh - 48px);
+    z-index: 1100;
+    border: 1px solid var(--fn-border-secondary, #e0e0e0);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    resize: both;
+    overflow: auto;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fn-border-secondary, #e0e0e0);
+  background: var(--fn-bg-secondary, #fafafa);
+  flex-shrink: 0;
+}
+
+.headerDraggable {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.emptyHeaderTitle {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-secondary, #666);
+}
+
+.profileBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.authTag {
+  font-size: 11px;
+  margin: 0;
+  animation: authPulse 2s ease-in-out infinite;
+}
+
+@keyframes authPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+
+  &.agent {
+    background: #52c41a;
+  }
+
+  &.user {
+    background: #faad14;
+    animation: userDotPulse 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes userDotPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(250, 173, 20, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(250, 173, 20, 0);
+  }
+}
+
+.controlLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary, #666);
+
+  &.takeoverActive {
+    color: #fa8c16;
+    font-weight: 600;
+  }
+}
+
+.currentUrl {
+  font-size: 11px;
+  color: var(--fn-text-quaternary, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.viewportContainer {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  position: relative;
+  outline: none;
+}
+
+.viewportInteractive {
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+
+  &:focus {
+    outline: 2px solid #1890ff;
+    outline-offset: -2px;
+  }
+}
+
+.screenshotImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Canvas for live screencast frames. The container is a flex centerer,
+   so ``max-*: 100%`` letterboxes the canvas correctly:
+   - Auto viewport: canvas pixel size == container, fills 100%.
+   - Fixed viewport (e.g. 1280×800 in a 720×600 popup): canvas keeps its
+     intrinsic aspect ratio and centers, with letterbox bars on whichever
+     axis is smaller. ``object-fit: contain`` is also set as a belt for
+     browsers that respect it on <canvas>. */
+.canvas {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  cursor: default;
+  outline: none;
+  object-fit: contain;
+}
+
+.urlBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--fn-border-secondary, #e0e0e0);
+  background: var(--fn-bg-secondary, #f5f5f5);
+  flex-shrink: 0;
+}
+
+.urlBarInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.interactiveHint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0.8;
+  animation: hintFadeIn 0.5s ease-out;
+}
+
+.interactiveTag {
+  font-size: 11px;
+  margin: 0;
+}
+
+@keyframes hintFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 0.8;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.placeholder {
+  color: #888;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Empty state when no browser session is active */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  text-align: center;
+  max-width: 320px;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  color: var(--fn-text-quaternary, #999);
+  opacity: 0.4;
+  margin-bottom: 16px;
+}
+
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-secondary, #666);
+  margin-bottom: 8px;
+}
+
+.emptyDesc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fn-text-tertiary, #999);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--fn-border-secondary, #e0e0e0);
+  flex-shrink: 0;
+  min-height: 42px;
+}
+
+.emptyFooterHint {
+  font-size: 12px;
+  color: var(--fn-text-quaternary, #999);
+  font-style: italic;
+}
+
+.stateTag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--fn-bg-secondary, #f0f0f0);
+  color: var(--fn-text-secondary, #666);
+}
+
+.stateTagTakeover {
+  background: linear-gradient(90deg, #faad14, #fa8c16) !important;
+  color: #fff !important;
+  border-color: #fa8c16 !important;
+  font-weight: 600;
+  animation: takeoverPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(250, 173, 20, 0.4);
+}
+
+@keyframes takeoverPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(250, 173, 20, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(250, 173, 20, 0.7);
+  }
+}
+
+/* Auth alert banner */
+.authBanner {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: linear-gradient(90deg, #faad14, #fa8c16);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+  animation: authBannerSlideIn 0.3s ease-out;
+  position: relative;
+}
+
+.authBannerClose {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+
+  &:hover {
+    color: #fff;
+  }
+}
+
+@keyframes authBannerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tab bar for multi-tab support */
+.tabBar {
+  display: flex;
+  align-items: stretch;
+  background: var(--fn-bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--fn-border-secondary, #e0e0e0);
+  flex-shrink: 0;
+  overflow-x: auto;
+  min-height: 32px;
+
+  &::-webkit-scrollbar {
+    height: 2px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 1px;
+  }
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary, #888);
+  border-right: 1px solid var(--fn-border-secondary, #e0e0e0);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--fn-bg-primary, #fff);
+    color: var(--fn-text-primary, #333);
+  }
+}
+
+.tabActive {
+  background: var(--fn-bg-primary, #fff);
+  color: var(--fn-text-primary, #333);
+  font-weight: 500;
+  border-bottom: 2px solid #1890ff;
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--fn-text-quaternary, #aaa);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: var(--fn-text-primary, #333);
+  }
+}
+
+.tabNew {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--fn-text-quaternary, #aaa);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: var(--fn-bg-primary, #fff);
+    color: var(--fn-text-primary, #333);
+  }
+}
+
+/* Active mode indicator on layout toggle buttons */
+.modeActive {
+  color: #1890ff !important;
+  background: rgba(24, 144, 255, 0.08) !important;
+  border-radius: 4px;
+}
+
+/* Popup overlay backdrop */
+.popupOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1099;
+  background: transparent;
+}
+
+/* While dragging the popup, disable pointer events on viewport and add visual cue */
+.popupDragging {
+  transition: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+
+  .viewportContainer {
+    pointer-events: none;
+  }
+
+  .header {
+    cursor: grabbing;
+  }
+}

@@ -1,0 +1,231 @@
+# Agent 内容文件 Backend 严格化改造方案
+
+> 目标：Octop 服务端对 agent workspace **内容文件**的读写，一律经 `agent.backend`（或 `resolve_harness_backend`），不再用 `Path(...).write_text` / `read_text` 直连磁盘。  
+> 记忆相关路径除外。不新增统一 I/O 抽象层。
+
+---
+
+## 1. 背景与问题
+
+当前部分代码在 agent 已配置远程 backend（S3/COS 等）时，仍向本地 `~/.octop/agents/<agent_id>/` 读写内容文件，导致：
+
+- 用户配置了 backend，agent 工具读的是远程存储；
+- Octop 服务端 seed / 写 SOUL / 同步插件 skills 等仍写本地；
+- Dashboard 部分读路径优先本地，展示与真实存储不一致。
+
+默认未配置 backend 时，harness 使用 `filesystem` + `virtual_mode`，`root_dir` 由 `workspace_dir`（即 `~/.octop/agents/<id>/`）在创建 backend 时挂载。此时直连磁盘与经 backend 写入**同一物理文件**，但远程 backend 场景下必须统一走 backend。
+
+---
+
+## 2. 核心原则
+
+### 2.1 只换 IO 通道，不换路径
+
+改造前后**操作的是同一个文件**，路径字符串**保持项目既有写法**，Octop 不做路径改写。
+
+```python
+# 以前
+workspace_dir = paths.ensure_agent_workspace(agent_id)
+(workspace_dir / "SOUL.md").write_text(text, encoding="utf-8")
+
+# 以后 — path 字符串不变，只换 IO
+soul_path = str(workspace_dir / "SOUL.md")
+backend = await agent_registry.resolve_harness_backend(agent_id)
+await backend.aupload_files([(soul_path, text.encode("utf-8"))])
+```
+
+- **禁止**在 Octop 层把 `~/.octop/agents/<id>/SOUL.md`「转换」为 `/SOUL.md`、`SOUL.md` 等另一套命名。
+- 专家模板、skills、seed 等：backend 参数中的 path 与原先 `disk_path = workspace_dir / rel` 的字符串形式一致。
+
+### 2.2 Backend 获取方式
+
+| 场景 | 用法 |
+|------|------|
+| Agent 已运行 | `agent.backend` |
+| 启动前 / 未运行 | `await agent_registry.resolve_harness_backend(agent_id)` |
+
+`resolve_harness_backend` 内部已调用 `resolve_backend(spec, workspace_dir=str(workspace))`，`root_dir` 在**创建 backend 时**挂载，日常读写只传业务路径。
+
+### 2.3 不新增 `workspace_io` 模块
+
+直接调用 backend 协议即可：
+
+- 读：`aread(path)`、`als(path)`、`adownload_files([path])`
+- 写：`aupload_files([(path, bytes)])`
+- 搜：`aglob` / `agrep`
+
+现有薄 helper（如 `api/common/workspace.py` 的 `coerce_read_content`、`gateway/backend_files.backend_download_bytes`）可复用，不包装成新层。
+
+### 2.4 `workspace_dir` 的保留用途
+
+`~/.octop/agents/<id>/` 仍作为 harness 的 `workspace_dir`，用于：
+
+- 构造 backend 时的 `root_dir` 挂载（默认 filesystem）；
+- checkpoint、sessions JSONL、harness-memory SQLite 等**本地产物**（不由 backend 协议管理）；
+- 终端 PTY 的 cwd（见 §6 例外）。
+
+**内容文件**（md、skills 等）不再由 Octop 对该目录做 `read_text` / `write_text`。
+
+---
+
+## 3. 范围
+
+### 3.1 纳入改造（须走 backend）
+
+| 类型 | 典型路径（示例，以实际 `workspace_dir` 拼接为准） |
+|------|--------------------------------------------------|
+| 引导模板 | `{workspace_dir}/AGENTS.md`、`BOOTSTRAP.md`、… |
+| Persona | `{workspace_dir}/SOUL.md` |
+| Skills | `{workspace_dir}/skills/<name>/SKILL.md` |
+| 专家模板 | `{workspace_dir}/` 下各相对路径 |
+| 工作区配置 md | `{workspace_dir}/USER.md`、`HEARTBEAT.md` 等 |
+| Dashboard workspace API | 已走 backend，保持 |
+| 上下文用量估算 | 读 `AGENTS.md`、`USER.md`、`SOUL.md` 等（见 §3.2） |
+| Bootstrap 状态 | 检查 `BOOTSTRAP.md`、`.bootstrapped` |
+| 系统备份中的 workspace 内容 | 改走 `export_workspace_zip(backend)` |
+
+### 3.2 记忆豁免（本期不强制改）
+
+| 类型 | 说明 |
+|------|------|
+| `MEMORY.md` | 长期记忆 |
+| `daily/YYYY-MM-DD.md` | 日记忆；读已走 backend，删除暂可保留本地 `unlink` |
+| `sessions/*.jsonl` | 对话历史兜底 |
+| harness-memory / checkpoint | 绑定 `workspace_dir`，非 backend 内容文件 |
+
+### 3.3 不在范围
+
+- Expert library 内 skill 脚本（agent 运行时经 harness 工具执行）
+- `~/.octop/plugins/` 安装、`~/.octop/security/` tool guard
+- Expert catalog  bundled 源码读取
+
+---
+
+## 4. 待改造清单
+
+### 4.1 写路径（优先级最高）
+
+| 位置 | 现状 | 改造 |
+|------|------|------|
+| `infra/agents/manager.py` `_seed_workspace` | `init_workspace(ws_dir)` 写本地 | `init_workspace(tmp_dir)` → 收集文件 → `backend.aupload_files`，path 为 `str(workspace_dir / rel)` |
+| `infra/agents/persona.py` `write_soul_md` | `Path.write_text` | 改为 async，参数含 `backend`；`aupload_files([(str(workspace_dir / "SOUL.md"), ...)])` |
+| `infra/agents/manager.py` `_start_agent` | 调 `write_soul_md(workspace_dir=...)` | 先 `resolve_harness_backend`，再写 SOUL |
+| `infra/agents/plugins/manager.py` `sync_skills_to_workspace` | `shutil.copytree` 到本地 | 重命名为 `sync_skills_to_backend`；遍历插件目录 → `aupload_files`，path 为 `str(workspace_dir / "skills" / name / ...)` |
+| `infra/agents/manager.py` `_apply_expert_template` | 本地 `write_text` + 可选 `aupload_files` | **删除本地写**；path 用 `str(ws / rel_path.lstrip("/"))`，与原先 `disk_path` 一致 |
+| `infra/agents/manager.py` `_ensure_skills_dir` | 本地 `mkdir` | 删除（由 upload 隐式建目录） |
+| `infra/utils/browser_media.py` | 截图写本地 `outbound/screenshots` | 截图后 `aupload_files` 到同逻辑路径，或短期标注仅本地 backend |
+
+### 4.2 读路径
+
+| 位置 | 现状 | 改造 |
+|------|------|------|
+| `infra/agents/context_breakdown.py` | `_read_workspace_text(workspace_dir, name)` | 改为 `backend.aread(str(workspace_dir / name))`；`MEMORY.md` 可保留记忆豁免策略 |
+| `infra/agents/manager.py` `_bootstrap_pending` | 读本地 `BOOTSTRAP.md`、`.bootstrapped` | 改为 async，经 `backend.aread` / `exists` 判断 |
+| `api/routers/agents.py` / `experts.py` | 调 `_bootstrap_pending(workspace)` | 传入 backend |
+| `api/routers/chat/serialize.py` | sessions 本地优先 | **记忆豁免**：维持或文档化；非记忆逻辑不读本地内容文件 |
+
+### 4.3 Gateway 与备份
+
+| 位置 | 现状 | 改造 |
+|------|------|------|
+| `infra/gateway/backend_files.py` | 预览失败时 `Path.read_bytes` 兜底 | 去掉对 agent workspace staging 的静默 fallback；host 临时文件仍可先 upload 再读 backend |
+| `infra/backup/system_archive.py` | tar 打包本地 `agent_workspace` | 每 agent 使用 `export_workspace_zip(backend)` |
+| `infra/backup/workspace_archive.py` | replace 模式 `_clear_local_workspace` | 远程 replace 需列 backend 文件后覆盖；或文档警告 + 后续支持 delete |
+
+### 4.4 已合规（仅需对齐 path 约定时检查）
+
+- `api/routers/workspace.py`
+- `api/routers/skills.py`
+- `api/routers/agent_files.py`（daily 读）
+- `infra/gateway/media.py` `AgentBackedMediaBackend`
+
+若上述模块中 path 使用 `/skills/...` 等与磁盘路径不一致的写法，与产品约定对齐：**统一为 `str(workspace_dir / ...)` 形式**（与本次原则一致）。
+
+---
+
+## 5. 启动时序（改造后）
+
+```
+create(agent)
+  ├─ DB insert
+  ├─ backend = resolve_harness_backend(agent_id)
+  ├─ _seed_workspace(agent_id)     # tmp → aupload_files，path 带 workspace_dir 前缀
+  ├─ write_soul_md(backend, ...)   # 若需要
+  ├─ create_agent(..., init_workspace=False)
+  └─ _apply_expert_template(...)   # 仅 aupload_files
+```
+
+- 全程不对内容文件 `Path.write_text`。
+- `init_workspace=False`：避免 harness 再次写本地造成双轨；seed 由 Octop 经 backend 完成。
+
+---
+
+## 6. 明确例外
+
+| 场景 | 处理 |
+|------|------|
+| **终端** `api/routers/terminal.py` | PTY cwd 仍为 `workspace_dir`；远程 backend 时 UI 禁用或提示「仅本地 backend」 |
+| **记忆删除** `agent_files.delete_daily_memory` | 暂保留本地 `unlink`；待 backend 支持 delete 后统一 |
+| **sessions JSONL** | 记忆豁免 |
+| **默认 filesystem** | `root_dir` = `workspace_dir` 时，`aupload_files` 与原先 `write_text` 落同一文件，默认用户无感 |
+
+---
+
+## 7. 兼容与迁移
+
+### 7.1 已有 agent + 远程 backend + 本地有文件、远程为空
+
+在 `_start_agent` 或一次性 CLI 中做幂等迁移：
+
+1. `resolve_harness_backend(agent_id)`
+2. 若 backend 根目录 listing 为空且本地 `workspace_dir` 有内容文件
+3. 将本地文件（排除记忆豁免目录）`aupload_files` 到 backend，path 仍为 `str(workspace_dir / rel)`
+
+### 7.2 默认 filesystem 用户
+
+无迁移步骤；仅 IO 通道变化，物理路径不变。
+
+---
+
+## 8. PR 拆分
+
+| PR | 内容 | 风险 |
+|----|------|------|
+| **PR-1** | 写路径：seed、soul、plugins、expert template；删本地双写 | 中 |
+| **PR-2** | 读路径：context_breakdown、bootstrap_pending | 低 |
+| **PR-3** | gateway 去 fallback、system backup 走 backend | 中 |
+| **PR-4** | 远程 backend 迁移逻辑 + 测试 | 低 |
+
+每 PR 独立 `make all`；合并前对默认 filesystem 做冒烟（创建 agent、读 SOUL、skills 列表）。
+
+---
+
+## 9. 测试计划
+
+| 类型 | 内容 |
+|------|------|
+| 单元 | `FakeBackend` 记录 `aupload_files` 的 path 与 bytes；创建 agent 后断言 path 为 `workspace_dir` 下的绝对路径形式 |
+| 单元 | `_apply_expert_template` 不再调用 `Path.write_text` |
+| 单元 | `bootstrap_pending` 经 backend 判断 |
+| 集成 | 默认 filesystem：创建专家 agent 后 `GET workspace/file` 与磁盘一致 |
+| 集成 | Mock 远程 backend：`aupload_files` 收到文件后，本地 staging 无对应内容文件（记忆/ checkpoint 目录除外） |
+
+---
+
+## 10. 完成标准
+
+- [ ] `infra/agents/manager.py`、`persona.py`、`plugins/manager.py` 中无对内容文件的 `write_text` / `copytree`（记忆豁免路径除外）
+- [ ] `context_breakdown`、`bootstrap_pending` 经 backend 读
+- [ ] `gateway/backend_files` 无 agent workspace 本地 fallback
+- [ ] `system_archive` 备份含 backend 内容
+- [ ] `make all` 绿；涉及 dashboard 时 `cd dashboard && npx tsc --noEmit`
+- [ ] 代码审查：新增 agent 内容文件 IO 必须出现 `backend.aread` / `aupload_files` 等，不得 `ensure_agent_workspace(...) / "xxx").write_text`
+
+---
+
+## 11. 参考
+
+- Backend 解析：`infra/agents/manager.py` → `resolve_harness_backend`
+- Harness 挂载：`harness_agent.backends.resolve_backend(spec, workspace_dir=...)`
+- 已合规示例：`api/routers/workspace.py`、`api/routers/skills.py`
+- 路径布局：`infra/utils/paths.py` → `agent_workspace` / `ensure_agent_workspace`

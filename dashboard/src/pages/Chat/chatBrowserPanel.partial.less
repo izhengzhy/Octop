@@ -1,0 +1,357 @@
+/* Browser panel layout, status button, resizer — imported by index.module.less */
+
+/* When the bottom browser panel is visible, the chat area and browser
+   share vertical space.  chatContent must shrink so the browser panel
+   (which has flex-shrink: 0) keeps its requested height.               */
+.chatMainWithBottomPanel {
+  .chatContent {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Reduce input padding to save vertical space */
+  .chatInput {
+    padding-top: 6px;
+    padding-bottom: 10px;
+  }
+}
+
+.browserStatusBtn {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-full);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-quaternary);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  padding: 0;
+  font-size: 18px;
+
+  &:hover {
+    color: var(--fn-text-brand);
+    background: var(--fn-bg-hover);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    transform: scale(1.05);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.agentProfileBtnWrap {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+
+  @media (max-width: 767px) {
+    right: 10px;
+    top: auto;
+    bottom: 88px;
+    transform: none;
+  }
+}
+
+.agentProfileBtn {
+  .chat-floating-circle-btn();
+}
+
+.messageBubble:hover .msgActionBtn,
+.userMsgRow:hover .msgActionBtn {
+  opacity: 1;
+}
+
+.msgActionBtnActive {
+  color: var(--fn-color-brand) !important;
+  border-color: var(--fn-color-brand) !important;
+  opacity: 1 !important;
+}
+
+.msgActionBtnDanger {
+  color: var(--fn-color-danger) !important;
+  border-color: var(--fn-color-danger) !important;
+  opacity: 1 !important;
+}
+
+/* Mobile: always show action buttons with larger touch targets */
+@media (max-width: 767px) {
+  .msgActionBtn {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+  }
+
+  .msgCopyBtn {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* ---------- User message edit area ---------- */
+.editArea {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+  max-width: 600px;
+}
+
+.editTextarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-color-brand);
+  border-radius: 14px;
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(232, 93, 117, 0.1);
+}
+
+.editActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editSaveBtn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--fn-color-brand), #f5738a);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+.editCancelBtn {
+  padding: 5px 14px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
+/* ---------- Error message box ---------- */
+.errorMessageBox {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 77, 79, 0.25);
+  background: rgba(255, 77, 79, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.errorMessageHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.errorMessageIcon {
+  font-size: 15px;
+  color: var(--fn-color-danger, #ff4d4f);
+}
+
+.errorMessageTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-color-danger, #ff4d4f);
+}
+
+.errorMessageBody {
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errorRetryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 77, 79, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-color-danger, #ff4d4f);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    box-shadow var(--fn-transition-fast);
+
+  &:hover {
+    background: rgba(255, 77, 79, 0.06);
+    box-shadow: 0 2px 8px rgba(255, 77, 79, 0.1);
+  }
+}
+.browserStatusActive {
+  color: var(--fn-text-secondary);
+  border-color: var(--fn-color-brand);
+  background: rgba(232, 93, 117, 0.06);
+}
+
+.browserStatusAuth {
+  animation: browserAuthPulse 2s ease-in-out infinite;
+  border-color: #faad14;
+  color: #faad14;
+}
+
+.browserStatusTakeover {
+  animation: browserTakeoverPulse 1.2s ease-in-out infinite;
+  border-color: #fa8c16;
+  color: #fa8c16;
+  background: rgba(250, 140, 22, 0.1);
+  box-shadow: 0 0 12px rgba(250, 140, 22, 0.4);
+
+  &:hover {
+    background: rgba(250, 140, 22, 0.15);
+    box-shadow: 0 0 20px rgba(250, 140, 22, 0.5);
+  }
+}
+
+@keyframes browserTakeoverPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(250, 140, 22, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(250, 140, 22, 0.6);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes browserAuthPulse {
+  0%,
+  100% {
+    box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
+  }
+  50% {
+    box-shadow: 0 2px 16px rgba(250, 173, 20, 0.5);
+  }
+}
+
+.browserStatusDot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--fn-bg-primary, #fff);
+}
+
+.browserStatus_agent {
+  background: #52c41a;
+}
+
+.browserStatus_user {
+  background: #faad14;
+  animation: browserUserDotPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes browserUserDotPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(250, 173, 20, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(250, 173, 20, 0);
+  }
+}
+
+/* ─── Panel Resizer (drag handle) ──────────────────────────────────────────── */
+.panelResizer {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+
+  &:hover,
+  &.resizerActive {
+    .resizerHandle {
+      opacity: 1;
+      background: #1890ff;
+    }
+  }
+}
+
+.panelResizer.horizontal {
+  width: 6px;
+  cursor: col-resize;
+  border-left: 1px solid var(--fn-border-secondary, #e0e0e0);
+
+  .resizerHandle {
+    width: 3px;
+    height: 40px;
+    border-radius: 2px;
+    background: var(--fn-text-quaternary, #ccc);
+    opacity: 0.5;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
+  }
+}
+
+.panelResizer.vertical {
+  height: 6px;
+  cursor: row-resize;
+  border-top: 1px solid var(--fn-border-secondary, #e0e0e0);
+
+  .resizerHandle {
+    width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--fn-text-quaternary, #ccc);
+    opacity: 0.5;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
+  }
+}
+
+.resizerActive {
+  background: rgba(24, 144, 255, 0.06);
+}

@@ -1,0 +1,55 @@
+.mobileDrawer {
+  :global(.ant-drawer-content) {
+    border-radius: 16px 16px 0 0;
+  }
+
+  :global(.ant-drawer-header) {
+    flex-shrink: 0;
+  }
+
+  :global(.ant-drawer-body) {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+.drawerTitleBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.fileContent {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fn-text-primary);
+  font-family: inherit;
+}
+
+.skillItemRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+}

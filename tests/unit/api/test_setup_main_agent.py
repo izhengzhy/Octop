@@ -1,0 +1,50 @@
+"""Regression: bootstrap ``main`` agent must not use workspace-scoped virtual backend."""
+
+from __future__ import annotations
+
+import os
+import tempfile
+
+import pytest
+from harness_agent.backends import resolve_backend
+from harness_agent.backends.workspace import BackendWorkspace
+
+from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
+
+
+def test_bootstrap_main_spec_has_no_custom_backend() -> None:
+    """setup._bootstrap_default_agent must not pin virtual_mode without root_dir='/'."""
+    from octop.infra.agents.experts.catalog import (
+        build_create_spec_from_expert,
+    )
+
+    catalog = ExpertCatalog(default_library_root())
+    catalog.refresh()
+    expert = catalog.get("general-assistant")
+    assert expert is not None
+    spec = build_create_spec_from_expert(
+        expert_id="general-assistant",
+        expert=expert,
+        user_id=1,
+        agent_id="main",
+        name="通用助手",
+        locale="zh",
+    )
+    assert "backend" not in spec.config
+    assert spec.config.get("expert_id") == "general-assistant"
+
+
+@pytest.mark.asyncio
+async def test_workspace_scoped_virtual_backend_creates_nested_paths() -> None:
+    """Broken layout when backend is {local_shell, virtual_mode} without root_dir='/'."""
+    with tempfile.TemporaryDirectory() as ws_dir:
+        backend = resolve_backend(
+            {"type": "local_shell", "virtual_mode": True},
+            workspace_dir=ws_dir,
+        )
+        ws = BackendWorkspace(backend, ws_dir)
+        await ws.aupload_bytes("SOUL.md", b"# soul")
+        assert not os.path.isfile(os.path.join(ws_dir, "SOUL.md"))
+        assert os.path.isdir(os.path.join(ws_dir, "Users")) or os.path.isdir(
+            os.path.join(ws_dir, "private")
+        )

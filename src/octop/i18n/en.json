@@ -1,0 +1,458 @@
+{
+  "slash": {
+    "error": {
+      "unknown_command": "Unknown command: /{name}. Type /help for available commands."
+    },
+    "help": {
+      "title": "Available commands"
+    },
+    "list": {
+      "title": {
+        "topics": "Topics",
+        "sessions": "Active sessions",
+        "recent": "Recent conversations"
+      },
+      "empty": "No conversations yet."
+    },
+    "history": {
+      "title": "Conversation stats"
+    },
+    "token": {
+      "title": "Token usage · {short}",
+      "unavailable": "Token usage tracking is unavailable.",
+      "empty": "No token usage recorded for this thread yet."
+    },
+    "status": {
+      "title": "Session status",
+      "model_override": "{model} (thread override)",
+      "model_default": "{model} (agent default)",
+      "model_auto": "auto (agent / provider default)",
+      "tokens_none": "no usage recorded yet",
+      "tokens_summary": "{total:,} tokens ({input:,} in / {output:,} out, {turns} turns)",
+      "context": "{count} checkpoint messages",
+      "im_channels": "{count} ({kinds})",
+      "owner_shared": "shared (no single owner)",
+      "user_fmt": "{username} (id={user_id})"
+    },
+    "cron": {
+      "title": "Cron jobs",
+      "unavailable": "Cron manager unavailable.",
+      "usage": "Usage: /cron list",
+      "empty": "No active cron jobs."
+    },
+    "new": {
+      "started": "Started a new conversation ({short})."
+    },
+    "switch": {
+      "usage": "Usage: /switch <thread_short_id>",
+      "not_found": "No thread matches {short!r}.",
+      "done": "Switched to {short}."
+    },
+    "resume": {
+      "empty": "No previous conversation to resume.",
+      "done": "Resumed {short}."
+    },
+    "hitl": {
+      "card_title": "⚠️ Tool approval required",
+      "card_intro": "The agent wants to run the following tool(s):",
+      "action_line": "{index}. **{name}**",
+      "card_footer": "Reply with `/approve` to allow, or `/reject [reason]` to deny.",
+      "card_pending_id": "Approval ID: `{pending_id}` (valid for 30 minutes)",
+      "none_pending": "No pending tool approval for this conversation.",
+      "invalid_pending_id": "No pending approval with ID `{pending_id}`. Use `/pending` to list or `/approve` without an ID for the latest.",
+      "not_owner": "Only the user who started this turn can approve or reject.",
+      "expired": "This approval request has expired. Send a new message to retry.",
+      "approved_ack": "Approved. Continuing…",
+      "rejected_ack": "Rejected. Continuing…",
+      "followup_pending": "Another tool is waiting for your approval.",
+      "resume_failed": "Failed to resume after approval: {error}",
+      "pending_title": "Pending tool approvals",
+      "pending_empty": "No pending tool approvals in this session.",
+      "pending_line": "`{pending_id}` — {count} tool(s)",
+      "dashboard_hint": "Tool approval in chat uses the approval card in the dashboard, or `/approve` / `/reject` in IM channels."
+    },
+    "title": {
+      "usage": "Usage: /title <text>",
+      "done": "Title set: {title}"
+    },
+    "delete": {
+      "usage": "Usage: /delete <thread_short_id>",
+      "not_found": "No thread matches {short!r}.",
+      "active": "Cannot delete the active thread. Use /new first.",
+      "done": "Deleted thread {short}."
+    },
+    "pin": {
+      "done": "Thread pinned."
+    },
+    "unpin": {
+      "done": "Thread unpinned."
+    },
+    "model": {
+      "override": "Model override: {model}",
+      "current": "Model: {model}",
+      "current_default": "Model: {model} (agent default)",
+      "usage": "No model override. Usage: /model <provider:model>",
+      "cleared": "Model override cleared.",
+      "set": "Model for this thread → {model}."
+    },
+    "compact": {
+      "done": "Context compacted. Fresh thread {short}{archived}.",
+      "archived": " ({count} messages archived as {short})"
+    },
+    "agent": {
+      "usage": "Usage: /agent list | switch <name>",
+      "switch_usage": "Usage: /agent switch <name>",
+      "list_title": "Your agents",
+      "empty": "No agents found.",
+      "unavailable": "Agent list unavailable.",
+      "not_found": "Agent not found: {name}",
+      "switched": "Switched to agent **{name}**.",
+      "current": " ← current"
+    },
+    "skills": {
+      "usage": "Usage: /skills [list]",
+      "title": "Skills",
+      "empty": "No skills installed.",
+      "unavailable": "Skill list unavailable.",
+      "enabled": "on",
+      "disabled": "off"
+    },
+    "connectors": {
+      "usage": "Usage: /connectors [list]",
+      "title": "Connectors",
+      "empty": "No active connectors with credentials.",
+      "unavailable": "Connector list unavailable."
+    },
+    "delegate": {
+      "usage": "Usage: /delegate <agent> <task> | list | cancel <id>",
+      "unavailable": "Delegation is not available.",
+      "empty": "No delegations yet.",
+      "list_title": "Recent delegations",
+      "started": "Delegation `{id}` started → **{name}**.",
+      "same_agent": "Cannot delegate to the same agent.",
+      "cancel_usage": "Usage: /delegate cancel <id>",
+      "not_found": "Delegation not found: {id}",
+      "cancelled": "Delegation `{id}` cancelled."
+    },
+    "stop": {
+      "done": "Generation stopped.",
+      "empty": "No active generation to stop for this session."
+    },
+    "untitled": "(untitled)",
+    "yes": "yes",
+    "no": "no",
+    "unknown": "unknown",
+    "fields": {
+      "thread": "thread",
+      "messages": "messages",
+      "title": "title",
+      "pinned": "pinned",
+      "last_active": "last_active",
+      "model_override": "model_override",
+      "input": "input",
+      "output": "output",
+      "total": "total",
+      "turns": "turns",
+      "octop": "octop",
+      "uptime": "uptime",
+      "agent": "agent",
+      "agent_id": "agent_id",
+      "owner": "owner",
+      "chat_user": "chat_user",
+      "workspace": "workspace",
+      "template": "template",
+      "model": "model",
+      "session": "session",
+      "channel": "channel",
+      "context": "context",
+      "tokens": "tokens",
+      "thread_age": "thread_age",
+      "im_channels": "im_channels",
+      "cron_jobs": "cron_jobs",
+      "last_error": "last_error"
+    },
+    "catalog": {
+      "categories": {
+        "core": "Core",
+        "session": "Sessions",
+        "media": "Media",
+        "system": "System",
+        "debug": "Debug"
+      },
+      "help": {
+        "label": "Help",
+        "description": "List available slash commands by category"
+      },
+      "status": {
+        "label": "Session status",
+        "description": "Agent, owner, workspace, model, usage, and session info"
+      },
+      "model": {
+        "label": "Model",
+        "description": "Show, set, or reset the model override for this thread"
+      },
+      "new": {
+        "label": "New chat",
+        "description": "Clear context and start a new conversation thread"
+      },
+      "compact": {
+        "label": "Compact memory",
+        "description": "Archive current context and start a fresh thread"
+      },
+      "stop": {
+        "label": "Stop generation",
+        "description": "Cancel the in-flight response stream"
+      },
+      "history": {
+        "label": "Conversation stats",
+        "description": "Show message count and thread metadata"
+      },
+      "token": {
+        "label": "Token usage",
+        "description": "Show token usage for the current thread"
+      },
+      "list": {
+        "label": "Thread list",
+        "description": "List recent conversation threads"
+      },
+      "switch": {
+        "label": "Switch thread",
+        "description": "Switch to a historical thread by short id"
+      },
+      "resume": {
+        "label": "Resume previous",
+        "description": "Switch back to the previous thread, or /resume <short_id>"
+      },
+      "approve": {
+        "label": "Approve tools",
+        "description": "Approve a paused tool execution (IM channels)"
+      },
+      "reject": {
+        "label": "Reject tools",
+        "description": "Reject a paused tool execution with an optional reason"
+      },
+      "pending": {
+        "label": "Pending approvals",
+        "description": "List tool approvals waiting for your decision"
+      },
+      "title": {
+        "label": "Set title",
+        "description": "Rename the current thread"
+      },
+      "delete": {
+        "label": "Delete thread",
+        "description": "Delete a thread by short id (not the active one)"
+      },
+      "pin": {
+        "label": "Pin thread",
+        "description": "Pin the current thread"
+      },
+      "unpin": {
+        "label": "Unpin thread",
+        "description": "Remove pin from the current thread"
+      },
+      "cron": {
+        "label": "Cron jobs",
+        "description": "List scheduled cron jobs for this agent"
+      },
+      "agent": {
+        "label": "Agents",
+        "description": "List or switch the active agent"
+      },
+      "skills": {
+        "label": "Skills",
+        "description": "List installed skills for this agent"
+      },
+      "connectors": {
+        "label": "Connectors",
+        "description": "List active connectors with credentials"
+      },
+      "exit": {
+        "label": "Exit",
+        "description": "End the CLI session"
+      }
+    }
+  },
+  "errors": {
+    "AUTH_FAILED": "Authentication failed.",
+    "TOKEN_EXPIRED": "Session expired. Please sign in again.",
+    "SETUP_REQUIRED": "Initial setup is required.",
+    "FORBIDDEN": "Permission denied.",
+    "NOT_FOUND": "Not found.",
+    "USER_DISABLED": "This account has been disabled.",
+    "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
+    "USERNAME_TAKEN": "Username is already taken.",
+    "AGENT_NOT_FOUND": "Agent not found.",
+    "AGENT_FAILED": "Agent failed to start.",
+    "AGENT_BUSY": "Agent is busy.",
+    "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
+    "PROVIDER_NAME_TAKEN": "Provider name is already in use.",
+    "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
+    "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
+    "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
+    "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
+    "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
+    "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
+    "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
+    "CONNECTOR_NOT_FOUND": "Connector not found.",
+    "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
+    "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
+    "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
+    "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
+    "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "SLASH_UNKNOWN": "Unknown slash command.",
+    "SLASH_BAD_ARGS": "Invalid arguments.",
+    "VOICE_BROWSER_ONLY": "Voice input is only available in the browser.",
+    "VOICE_KIND_UNSUPPORTED": "Unsupported voice provider.",
+    "VOICE_CAPABILITY_MISMATCH": "Voice capability does not match.",
+    "VOICE_PROVIDER_DISABLED": "Voice provider is disabled.",
+    "INTERNAL_ERROR": "Internal server error.",
+    "TLS_NOT_ELIGIBLE": "TLS issuance is not available in the current server configuration.",
+    "TLS_ISSUE_IN_PROGRESS": "A certificate issuance task is already running.",
+    "TLS_DOMAIN_MISMATCH": "The domain does not match the existing certificate.",
+    "WORKSPACE_OP_UNSUPPORTED": "This workspace backend does not support that file operation.",
+    "SKILL_IMPORT_UNSUPPORTED_URL": "This skill URL source is not supported.",
+    "SKILL_IMPORT_FAILED": "Skill import failed: {reason}",
+    "SKILL_ALREADY_EXISTS": "Skill {name} already exists. Enable overwrite to replace it."
+  },
+  "tls": {
+    "preflight": {
+      "domain": {
+        "fail": "Domain is required."
+      },
+      "bind_host": {
+        "ok": "bind_host is 0.0.0.0",
+        "fail": "bind_host is {bind_host}; set to 0.0.0.0 in config.json"
+      },
+      "dual_port": {
+        "ok": "Dual listeners: HTTP {http_port} + HTTPS {https_port}"
+      },
+      "tls_enabled": {
+        "fail": "TLS is already enabled; configure dual-port renewal (443 + HTTP 80)"
+      },
+      "port": {
+        "ok": "Listening on port {http_port}",
+        "fail": "Port is {port}; set port to {http_port} and restart before first issuance"
+      },
+      "port_443": {
+        "ok": "Port {https_port} is available for HTTPS after issuance",
+        "fail": "Port {https_port} is in use by another process"
+      },
+      "dns": {
+        "ok": "{domain} resolves to this host ({public_ip})",
+        "fail": "DNS lookup failed for {domain}: {error}",
+        "fail_empty": "No A/AAAA records found for {domain}",
+        "fail_mismatch": "{domain} resolves to {resolved_ips}; expected {public_ip}"
+      },
+      "public_ip": {
+        "fail": "Could not determine this host's public IP (check outbound HTTPS)"
+      }
+    },
+    "preflight_failed_summary": "One or more preflight checks failed"
+  },
+  "tools": {
+    "unknown": "Unknown tool",
+    "read_file": "Read file",
+    "write_file": "Write file",
+    "edit_file": "Edit file",
+    "current_time": "Current time",
+    "task": "Sub-agent task",
+    "ls": "List directory",
+    "glob": "Find files",
+    "grep": "Search content",
+    "run_terminal_cmd": "Run command",
+    "web_fetch": "Fetch webpage",
+    "desktop_screenshot": "Desktop screenshot",
+    "memory_search": "Search memory",
+    "memory_get": "Read memory",
+    "tavily_search": "Tavily web search",
+    "brave_search": "Brave web search",
+    "google_search": "Google web search",
+    "kimi_search": "Kimi web search",
+    "searchfree_search": "AI web search",
+    "cronjob_list": "List cron jobs",
+    "cronjob_get": "Get cron job",
+    "cronjob_create": "Create cron job",
+    "cronjob_update": "Update cron job",
+    "cronjob_delete": "Delete cron job",
+    "cronjob_run_now": "Run cron job now",
+    "agent_list": "List agents",
+    "ask_agent": "Ask agent",
+    "call_agent": "Call agent",
+    "acp_runner": "ACP external agent",
+    "browser_use": "Use browser",
+    "browser_control": "Browser control",
+    "send_file_to_user": "Send file"
+  },
+  "skills": {
+    "pdf": "PDF",
+    "docx": "Word",
+    "xlsx": "Excel",
+    "pptx": "PowerPoint",
+    "file_reader": "File Reader",
+    "news": "News",
+    "octop-assistant": "Octop Assistant",
+    "octop_assistant": "Octop Assistant",
+    "daily-hot-news": "Daily Hot News",
+    "stock-info": "Stock Info",
+    "cvm-ai-doctor": "CVM AI Doctor",
+    "tencentcloud-infra": "Tencent Cloud Infra",
+    "publisher-multi-platform": "Multi-platform Publisher"
+  },
+  "channel": {
+    "tool_hint_start": "🔧 Calling tool: {tool_name}",
+    "tool_hint_end": "✅ {tool_name} done",
+    "runtime": {
+      "disabled": "Channel disabled",
+      "unregistered": "Not registered",
+      "error": "Connection failed"
+    },
+    "probe": {
+      "incomplete": "Incomplete credentials: missing {fields}",
+      "invalid_credentials": "Invalid credentials — check the App ID and App Secret",
+      "feishu_token_failed": "Feishu credential check failed: {detail}",
+      "field": {
+        "app_id": "App ID",
+        "app_secret": "App Secret",
+        "secret": "Secret",
+        "bot_id": "Bot ID",
+        "app_key": "Client ID",
+        "bot_token": "Bot Token",
+        "token": "Token",
+        "ak": "AK",
+        "sk": "SK",
+        "agent_id": "Agent ID",
+        "host": "Broker Host"
+      }
+    }
+  },
+  "agents": {
+    "state": {
+      "running": "Running",
+      "stopped": "Stopped",
+      "failed": "Start failed",
+      "starting": "Starting",
+      "stopping": "Stopping",
+      "created": "Created",
+      "error": "Error",
+      "unknown": "Unknown"
+    }
+  },
+  "agent_errors": {
+    "no_models_configured": "No models are configured. Go to Settings \u2192 Models to add a Provider, then enable this expert again.",
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings \u2192 Models or update this expert's default model, then try again."
+  },
+  "attachment": {
+    "header": "[Attachment] {filename}",
+    "path": "Workspace path: {path}",
+    "mime": "MIME: {media_type}",
+    "size": "Size: {size} bytes",
+    "empty_message": "[empty message]",
+    "empty_image": "User sent an image.",
+    "image_unavailable": "[Attachment] Image could not be loaded for the model."
+  },
+  "proactive_care": {
+    "system_prompt": "Today is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred \u2014 do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly.",
+    "system_prompt_with_soul": "{soul_md}\n\n---\n\nToday is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred \u2014 do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly."
+  }
+}

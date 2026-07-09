@@ -1,0 +1,64 @@
+import { useEffect, useState } from "react";
+import { applyUpdate } from "../../pwa";
+import { updateApi } from "../../api/modules/update";
+import styles from "./index.module.less";
+
+/**
+ * Listens for the "pwa:update-ready" event (dispatched by sw-register.ts) and
+ * renders a dismissible banner so the user can choose when to reload.
+ * Designed to be mounted once in MainLayout.
+ *
+ * When the process is running as a system service (OCTOP_SERVICE_MODE is
+ * set), clicking the update-now action also triggers a backend service restart so that
+ * the new Python package takes effect alongside the new frontend bundle.
+ */
+export default function PwaUpdatePrompt() {
+  const [visible, setVisible] = useState(false);
+  const [serviceMode, setServiceMode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = () => setVisible(true);
+    window.addEventListener("pwa:update-ready", handler);
+    return () => window.removeEventListener("pwa:update-ready", handler);
+  }, []);
+
+  // Fetch service mode once so we know whether to also restart the backend.
+  useEffect(() => {
+    updateApi
+      .getUpdateStatus()
+      .then((s) => setServiceMode(s.service_mode))
+      .catch(() => {});
+  }, []);
+
+  if (!visible) return null;
+
+  const handleUpdate = async () => {
+    setVisible(false);
+    // If running as a system service, trigger backend restart first.
+    // We don't await or block on it — applyUpdate() will reload the page
+    // via the service-worker controllerchange event anyway.
+    if (serviceMode) {
+      updateApi.restartService().catch(() => {});
+    }
+    applyUpdate();
+  };
+
+  const handleDismiss = () => setVisible(false);
+
+  return (
+    <div className={styles.banner} role="alert" aria-live="polite">
+      <span className={styles.icon}>✨</span>
+      <span className={styles.text}>新版本已就绪</span>
+      <button className={styles.btnPrimary} onClick={handleUpdate}>
+        立即更新
+      </button>
+      <button
+        className={styles.btnGhost}
+        onClick={handleDismiss}
+        aria-label="稍后更新"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}

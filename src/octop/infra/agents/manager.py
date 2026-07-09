@@ -1,0 +1,1120 @@
+"""AgentManager — process-wide singleton managing all HarnessAgent instances."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any, cast
+
+from harness_agent import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
+from harness_agent.security.models import SecurityPolicy
+
+from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
+from octop.infra.agents.acp_settings import ACPSettingsStore
+from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
+from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
+from octop.infra.backend.resolver import backend_spec_supports_execution, resolve_agent_backend_spec
+from octop.infra.connectors.builder import (
+    build_mcp_server_configs_for_user,
+    inject_missing_gateway_tools,
+)
+from octop.infra.connectors.service import ConnectorService
+from octop.infra.db.repos.audit import ACTOR_SYSTEM
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.ulid import new_short_id
+
+if TYPE_CHECKING:
+    from octop.config import OctopConfig
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+    from octop.infra.agents.plugins.manager import PluginManager
+    from octop.infra.cron.manager import CronManager
+    from octop.infra.db.repos.agents import AgentRow
+    from octop.infra.db.services import RepoBundle
+    from octop.infra.utils.paths import PathLayout
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Module constants & pure helpers
+# ---------------------------------------------------------------------------
+
+# harness-memory builds SQLite table names as ``{namespace}_*``. The namespace
+# must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
+_MEMORY_NS_PREFIX = "agent_"
+
+_AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
+
+
+def _memory_namespace(agent_id: str) -> str:
+    return f"{_MEMORY_NS_PREFIX}{agent_id}"
+
+
+def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
+    """Return the set of disabled skill slugs from agent config."""
+    raw = cfg.get("skills_disabled")
+    if isinstance(raw, list):
+        return {str(x) for x in raw}
+    return set()
+
+
+# ---------------------------------------------------------------------------
+# Data types
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AgentCreateSpec:
+    """Input for :meth:`AgentManager.create`."""
+
+    name: str
+    agent_id: str | None = None
+    user_id: int | None = None
+    description: str | None = None
+    persona_mbti: str | None = None
+    default_model: str | None = None
+    system_prompt: str | None = None
+    icon: str | None = None
+    template_name: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# AgentManager
+# ---------------------------------------------------------------------------
+
+
+class AgentManager:
+    """Process-wide singleton: owns harness HarnessAgentManager + all HarnessAgent instances.
+
+    On boot, loads all enabled agents from the DB and registers them with the
+    harness HarnessAgentManager. Provides CRUD that stays in sync between DB and runtime.
+
+    Row data is always read directly from the DB — no in-process row cache —
+    so callers always see the latest persisted state.
+
+    Public surface (by concern):
+      - Lifecycle: boot / shutdown, start / stop individual agents
+      - CRUD: create / update / delete
+      - Reads: get_row, list_*, get_config, resolve_user_agent
+      - Runtime: get_agent, stream / call / HITL / thread model
+      - Hot-reload: reload*, on_provider_changed, reload_harness_agents
+      - Connectors: reload_connectors*, prepare_chat_mcp
+      - Settings stores: langfuse, security, acp_settings, tool_guard_rules, providers
+    """
+
+    # ------------------------------------------------------------------
+    # Lifecycle — construction, wiring, boot / shutdown
+    # ------------------------------------------------------------------
+
+    def __init__(
+        self,
+        *,
+        repos: RepoBundle,
+        paths: PathLayout,
+        config: OctopConfig | None = None,
+        expert_catalog: ExpertCatalog | None = None,
+        plugin_manager: PluginManager | None = None,
+    ) -> None:
+        self._repos = repos
+        self._paths = paths
+        from octop.config import OctopConfig as _OctopConfig  # noqa: PLC0415
+
+        self._config = config or _OctopConfig()
+        self._expert_catalog = expert_catalog
+        self._plugin_manager = plugin_manager
+        self._cron_manager: CronManager | None = None
+        self._team_processor: Any | None = None
+        self._harness_manager: HarnessAgentManager | None = None
+        self._lock = asyncio.Lock()
+        self._reload_dirty: set[str] = set()
+        self._reload_worker_running: dict[str, bool] = {}
+        self._bootstrap_graph_refresh_pending: set[str] = set()
+        # Chat user id used to resolve connectors when agent.user_id is NULL (shared agents).
+        self._connector_user_override: dict[str, int] = {}
+        self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._security = SecuritySettingsStore(settings_repo=repos.settings_repo)
+        self._acp_settings = ACPSettingsStore(
+            settings_repo=repos.settings_repo,
+            agents_repo=repos.agent_repo,
+        )
+        self._tool_guard_rules = ToolGuardRulesStore(paths=paths)
+        self._providers = ProviderStore(
+            provider_repo=repos.provider_repo,
+        )
+        self._connector_svc = ConnectorService(
+            repo=repos.connector_repo,
+            secret_repo=repos.secret_repo,
+            settings_repo=repos.settings_repo,
+            config=self._config,
+        )
+
+    def set_cron_manager(self, cron_manager: CronManager) -> None:
+        """Attach the process-wide CronManager (must be set before boot())."""
+        self._cron_manager = cron_manager
+
+    def set_team_processor(self, team_processor: Any | None) -> None:
+        """Attach harness TeamProcessor (GlobalProcessor); required before boot()."""
+        self._team_processor = team_processor
+
+    async def boot(self) -> None:
+        self._tool_guard_rules.ensure_seeded()
+        providers = self._providers.build_harness_configs()
+        self._harness_manager = HarnessAgentManager(
+            providers=providers,
+            langfuse=self._langfuse.harness_config(),
+            team_processor=self._team_processor,
+        )
+        if self._harness_manager is not None:
+            self._harness_manager.set_security_policy(self._security.harness_policy())
+
+        rows = self._repos.agent_repo.list_all(include_disabled=False)
+        for row in rows:
+            if row.last_state == "stopped":
+                continue
+            await self._start_agent(row)
+
+    async def shutdown(self) -> None:
+        async with self._lock:
+            if self._harness_manager:
+                try:
+                    self._harness_manager.close()
+                except Exception:
+                    logger.exception("harness_manager.close() failed")
+                self._harness_manager = None
+
+    # ------------------------------------------------------------------
+    # Exposed stores & paths (read-only accessors)
+    # ------------------------------------------------------------------
+
+    @property
+    def providers(self) -> ProviderStore:
+        return self._providers
+
+    @property
+    def security(self) -> SecuritySettingsStore:
+        return self._security
+
+    @property
+    def acp_settings(self) -> ACPSettingsStore:
+        return self._acp_settings
+
+    @property
+    def tool_guard_rules(self) -> ToolGuardRulesStore:
+        return self._tool_guard_rules
+
+    @property
+    def langfuse(self) -> LangfuseSettingsStore:
+        return self._langfuse
+
+    @property
+    def paths(self) -> PathLayout:
+        return self._paths
+
+    @property
+    def harness_manager(self) -> HarnessAgentManager | None:
+        return self._harness_manager
+
+    # ------------------------------------------------------------------
+    # CRUD — persist agent rows and sync harness runtime
+    # ------------------------------------------------------------------
+
+    async def create(self, spec: AgentCreateSpec, *, defer_bootstrap: bool = False) -> AgentRow:
+        """Create a new agent, persist to DB, and register with harness."""
+        async with self._lock:
+            self._assert_agent_name_available(spec.user_id, spec.name)
+            if spec.agent_id:
+                if self._repos.agent_repo.get(spec.agent_id) is not None:
+                    raise OctopError(
+                        ErrorCode.AGENT_BUSY,
+                        f"agent_id {spec.agent_id!r} already exists",
+                    )
+                agent_id = spec.agent_id
+            else:
+                for _ in range(16):
+                    agent_id = new_short_id()
+                    if self._repos.agent_repo.get(agent_id) is None:
+                        break
+                else:
+                    raise RuntimeError("failed to allocate unique agent_id")
+            config = dict(spec.config)
+            if spec.persona_mbti:
+                config["persona"] = spec.persona_mbti.upper()
+            self._repos.agent_repo.create(
+                agent_id=agent_id,
+                user_id=spec.user_id,
+                name=spec.name,
+                description=spec.description,
+                persona_mbti=spec.persona_mbti,
+                default_model=spec.default_model,
+                system_prompt=spec.system_prompt,
+                config_json=json.dumps(config) if config else None,
+                icon=spec.icon,
+                template_name=spec.template_name,
+            )
+            row = self._repos.agent_repo.get(agent_id)
+            assert row is not None
+            if spec.template_name:
+                await self._seed_expert_template(row, spec.template_name)
+            if defer_bootstrap:
+                self._repos.agent_repo.set_state(agent_id, "starting")
+                asyncio.create_task(
+                    self._complete_create_bootstrap(row),
+                    name=f"bootstrap-agent-{agent_id}",
+                )
+            else:
+                agent = await self._start_agent(row, init_workspace=True)
+                if agent is not None and spec.template_name:
+                    reload = getattr(agent, "reload_subagents", None)
+                    if callable(reload):
+                        await asyncio.to_thread(reload)
+            self._repos.audit_repo.write(
+                actor=ACTOR_SYSTEM, action="agent.create", target=agent_id, payload=spec.name
+            )
+            return row
+
+    async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
+        """Update agent config in DB and reload harness agent in the background."""
+        new_name = kwargs.get("name")
+        if isinstance(new_name, str):
+            row = self._repos.agent_repo.get(agent_id)
+            if row is None:
+                raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+            if new_name != row.name:
+                self._assert_agent_name_available(
+                    row.user_id,
+                    new_name,
+                    exclude_agent_id=agent_id,
+                )
+        self._repos.agent_repo.update_config(agent_id, **kwargs)
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        self._schedule_reload(agent_id)
+        return row
+
+    async def delete(self, agent_id: str) -> None:
+        """Remove agent from DB, harness runtime, and workspace directory."""
+        async with self._lock:
+            await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+        self._repos.agent_repo.delete(agent_id)
+        self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
+
+    async def start(self, agent_id: str) -> None:
+        """Load agent into harness runtime (no-op config merge)."""
+        async with self._lock:
+            row = self._repos.agent_repo.get(agent_id)
+            if row is None:
+                raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+            await self._start_agent(row, init_workspace=False)
+
+    async def stop(self, agent_id: str) -> None:
+        """Unload agent from harness runtime and persist ``last_state=stopped``."""
+        async with self._lock:
+            row = self._repos.agent_repo.get(agent_id)
+            if row is None:
+                raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+            await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+            self._repos.agent_repo.set_state(agent_id, "stopped", error=None)
+
+    # ------------------------------------------------------------------
+    # Row & config reads — DB lookups, no harness required
+    # ------------------------------------------------------------------
+
+    def get_row(self, agent_id: str) -> AgentRow | None:
+        """Look up an agent row by its public agent_id (ULID). Returns None if absent."""
+        return self._repos.agent_repo.get(agent_id)
+
+    def workspace_for_agent(self, agent_id: str) -> Any | None:
+        """Resolve :class:`BackendWorkspace` without a running harness agent."""
+        row = self.get_row(agent_id)
+        if row is None:
+            return None
+        return self._backend_workspace_for_row(row)
+
+    def list_agents(self, user_id: int) -> list[AgentRow]:
+        return self._repos.agent_repo.list_by_user(user_id, include_disabled=False)
+
+    def list_rows(self) -> list[AgentRow]:
+        """Return all enabled agent rows (all users), sorted by creation time."""
+        return self._repos.agent_repo.list_all(include_disabled=False)
+
+    def resolve_user_agent(self, user_id: int, query: str) -> AgentRow | None:
+        """Match an agent owned by *user_id* by id suffix, full id, or name."""
+        q = query.strip()
+        if not q:
+            return None
+        rows = self.list_agents(user_id)
+        ql = q.lower()
+        for row in rows:
+            if row.agent_id == q or row.agent_id.endswith(q):
+                return row
+        for row in rows:
+            if row.name.lower() == ql:
+                return row
+        partial = [r for r in rows if ql in r.name.lower()]
+        return partial[0] if len(partial) == 1 else None
+
+    def get_config(self, agent_id: str) -> dict[str, Any]:
+        """Return the parsed config_json for agent_id, or empty dict."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return {}
+        try:
+            cfg = json.loads(row.config_json or "{}")
+            return cfg if isinstance(cfg, dict) else {}
+        except Exception:
+            return {}
+
+    def is_bootstrapped(self, agent_id: str) -> bool:
+        """Whether onboarding has completed for a running agent."""
+        try:
+            return self.get_agent(agent_id).is_bootstrapped()
+        except OctopError:
+            return False
+
+    def find_agents_using_provider(self, provider_name: str) -> list[dict[str, str]]:
+        """Return agents referencing *provider_name* in config or default_model."""
+        return self._providers.find_agents_using_provider(
+            agent_repo=self._repos.agent_repo,
+            get_config=self.get_config,
+            provider_name=provider_name,
+        )
+
+    # ------------------------------------------------------------------
+    # Runtime access — live HarnessAgent handle
+    # ------------------------------------------------------------------
+
+    def get_agent(self, agent_id: str) -> HarnessAgent:
+        """Return the live HarnessAgent for agent_id (ULID).
+
+        Raises OctopError.AGENT_NOT_FOUND if not running.
+        """
+        if self._harness_manager is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not running")
+        try:
+            return self._harness_manager.get_agent(agent_id).agent
+        except KeyError:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not running") from None
+
+    # ------------------------------------------------------------------
+    # Chat / invoke — stream, call, HITL, thread model overrides
+    # ------------------------------------------------------------------
+
+    async def stream(self, agent_id: str, request: dict[str, Any]) -> AsyncIterator[Any]:
+        """Stream harness chunks (Langfuse tracing handled inside harness-agent)."""
+        if self._harness_manager is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not running")
+
+        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        req = self._prepare_stream_request(agent_id, request)
+        async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
+            yield chunk
+        self._apply_pending_bootstrap_graph_refresh(agent_id)
+
+    async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        """Non-streaming harness invocation (one-shot agent call)."""
+        if self._harness_manager is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not running")
+        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        req = self._prepare_stream_request(agent_id, request)
+        result = await self._harness_manager.call(agent_id, cast(Any, req))
+        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        if not isinstance(result, dict):
+            return {"result": result}
+        return result
+
+    async def resume_hitl(
+        self,
+        agent_id: str,
+        thread_id: str,
+        decisions: list[dict[str, Any]],
+    ) -> AsyncIterator[Any]:
+        """Resume a paused HITL interrupt for *thread_id*."""
+        if self._harness_manager is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not running")
+        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        async for chunk in self._harness_manager.resume_hitl(agent_id, thread_id, decisions):
+            yield chunk
+        self._apply_pending_bootstrap_graph_refresh(agent_id)
+
+    def cancel_stream(self, agent_id: str, thread_id: str) -> None:
+        """Signal harness-agent to stop the active stream for *(agent_id, thread_id)*."""
+        if self._harness_manager is not None:
+            self._harness_manager.cancel(agent_id, thread_id)
+
+    def get_thread_model(self, agent_id: str, thread_id: str) -> str | None:
+        if self._harness_manager is None:
+            return None
+        return self._harness_manager.get_thread_model(agent_id, thread_id)
+
+    def set_thread_model(self, agent_id: str, thread_id: str, model: str) -> None:
+        if self._harness_manager is not None:
+            self._harness_manager.set_thread_model(agent_id, thread_id, model)
+
+    def clear_thread_model(self, agent_id: str, thread_id: str) -> None:
+        if self._harness_manager is not None:
+            self._harness_manager.clear_thread_model(agent_id, thread_id)
+
+    # ------------------------------------------------------------------
+    # Hot-reload — rebuild harness agents after config / provider changes
+    # ------------------------------------------------------------------
+
+    async def reload(self, agent_id: str) -> None:
+        """Rebuild harness runtime for one agent (e.g. after plugin install)."""
+        await self._reload_agent(agent_id)
+
+    async def reload_all(self) -> None:
+        """Rebuild harness runtime for every enabled agent."""
+        for row in self._repos.agent_repo.list_all(include_disabled=False):
+            await self._reload_agent(row.agent_id)
+
+    def reload_harness_agents(self) -> None:
+        """Rebuild harness agents in place (e.g. after tool-guard rules changed on disk).
+
+        Does not rebuild Octop-side agent config from the DB — use :meth:`reload` for that.
+        """
+        if self._harness_manager is not None:
+            self._harness_manager.rebuild_all_agents()
+
+    async def on_provider_changed(self) -> None:
+        """Called after any provider CRUD. Syncs harness factory and restarts blocked agents."""
+        if self._harness_manager is None:
+            return
+        providers = self._providers.build_harness_configs()
+        sync_providers_to_harness(
+            self._harness_manager,
+            providers,
+            shared_factory=self._harness_manager.shared_factory,
+        )
+        if self._harness_manager.shared_factory is not None:
+            await self.reload_all()
+
+    # ------------------------------------------------------------------
+    # Connectors & MCP — OAuth refresh and pre-chat tool loading
+    # ------------------------------------------------------------------
+
+    async def reload_connectors(
+        self,
+        agent_id: str,
+        *,
+        connector_user_id: int | None = None,
+    ) -> None:
+        """Refresh connector OAuth tokens and reload harness MCP tool registrations."""
+        row = self.get_row(agent_id)
+        if row is None:
+            return
+        uid = self._connector_uid_for(row, connector_user_id=connector_user_id)
+        if uid is None:
+            logger.warning(
+                "agent %s: skip connector reload — agent.user_id is NULL and no connector_user_id",
+                agent_id,
+            )
+            return
+        self._connector_user_override[agent_id] = uid
+        try:
+            svc = self._connector_svc
+            for inst in self._repos.connector_repo.list_by_user(uid):
+                if inst.status != "active":
+                    continue
+                await svc.ensure_fresh_credentials(inst.instance_id, inst.kind)
+            await self._reload_agent(agent_id)
+        finally:
+            self._connector_user_override.pop(agent_id, None)
+
+    async def reload_connectors_for_user(self, user_id: int) -> None:
+        reloaded: set[str] = set()
+        for row in self._repos.agent_repo.list_by_user(user_id, include_disabled=False):
+            await self.reload_connectors(row.agent_id, connector_user_id=user_id)
+            reloaded.add(row.agent_id)
+        # Shared agents (user_id IS NULL) still need this user's connector MCP configs.
+        for row in self._repos.agent_repo.list_all(include_disabled=False):
+            if row.user_id is not None or row.agent_id in reloaded:
+                continue
+            await self.reload_connectors(row.agent_id, connector_user_id=user_id)
+
+    async def prepare_chat_mcp(
+        self,
+        agent_id: str,
+        names: list[str] | None,
+        *,
+        connector_user_id: int | None = None,
+    ) -> None:
+        """Ensure requested MCP servers are configured and tools are loaded before chat."""
+        if not names:
+            return
+        agent = self.get_agent(agent_id)
+        cfg_names = set(agent.config.mcp_server_configs.keys())
+        tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
+        missing_cfg = [n for n in names if n not in cfg_names]
+        missing_tools = [n for n in names if not any(t.startswith(f"{n}_") for t in tool_set)]
+        logger.info(
+            "prepare_chat_mcp agent=%s connector_user_id=%s requested=%s "
+            "cfg_names=%s tool_count=%d tools_sample=%s",
+            agent_id,
+            connector_user_id,
+            names,
+            sorted(cfg_names),
+            len(tool_set),
+            sorted(tool_set)[:8],
+        )
+        if not missing_cfg and not missing_tools:
+            matched = sorted(t for t in tool_set if any(t.startswith(f"{n}_") for n in names))
+            logger.info(
+                "prepare_chat_mcp agent=%s: MCP already ready, matching_tools=%s",
+                agent_id,
+                matched,
+            )
+            return
+        logger.info(
+            "Reloading agent %s MCP tools (missing_cfg=%s missing_tools=%s)",
+            agent_id,
+            missing_cfg,
+            missing_tools,
+        )
+        await self.reload_connectors(agent_id, connector_user_id=connector_user_id)
+
+    # ------------------------------------------------------------------
+    # Settings persistence — push global policy into harness runtime
+    # ------------------------------------------------------------------
+
+    def save_langfuse(
+        self,
+        *,
+        enabled: bool,
+        public_key: str,
+        host: str,
+        secret_key: str | None = None,
+    ) -> LangfuseSettings:
+        """Persist Langfuse settings and push them into the harness runtime."""
+        view = self._langfuse.save(
+            enabled=enabled,
+            public_key=public_key,
+            host=host,
+            secret_key=secret_key,
+        )
+        if self._harness_manager is not None:
+            self._harness_manager.set_langfuse(self._langfuse.harness_config())
+        return view
+
+    def save_security(self, policy: SecurityPolicy | dict[str, Any]) -> SecurityPolicy:
+        """Persist security policy and push it into harness agents."""
+        resolved = self._security.save(policy)
+        if self._harness_manager is not None:
+            try:
+                self._harness_manager.set_security_policy(self._security.harness_policy())
+            except Exception:
+                logger.exception("failed to apply security policy to running harness agents")
+        return resolved
+
+    # ------------------------------------------------------------------
+    # Agent config mutations — persona, skills, config_json patches
+    # ------------------------------------------------------------------
+
+    async def apply_persona_mbti(self, agent_id: str, code: str) -> AgentRow:
+        """Persist MBTI persona on the agent row and reload harness runtime."""
+        norm = code.upper()
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+
+        from octop.infra.agents.persona import PersonaLoader  # noqa: PLC0415
+
+        loader = PersonaLoader()
+        persona_text = loader.render(
+            mbti=norm,
+            agent_name=row.name,
+            user_display="User",
+            custom=None,
+        )
+
+        cfg = self.get_config(agent_id)
+        cfg["persona"] = norm
+        self._repos.agent_repo.update_config(
+            agent_id,
+            persona_mbti=norm,
+            system_prompt=persona_text,
+            config_json=json.dumps(cfg),
+        )
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        self._schedule_reload(agent_id)
+        return row
+
+    async def update_config_json(self, agent_id: str, config_json: str) -> AgentRow:
+        """Patch ``config_json`` and reload the harness runtime in the background."""
+        self._repos.agent_repo.update_config(agent_id, config_json=config_json)
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        self._schedule_reload(agent_id)
+        return row
+
+    async def list_skill_summaries(self, agent_id: str) -> list[dict[str, Any]]:
+        """Installed skills for *agent_id* (delegates to harness-agent catalog)."""
+        agent = self.get_agent(agent_id)
+        return await agent.list_skill_summaries()
+
+    def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
+        """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""
+        agent = self.get_agent(agent_id)
+        return agent.list_subagent_summaries()
+
+    def sync_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
+        """Push ``skills_disabled`` to the running harness agent (hot update)."""
+        self.get_agent(agent_id).set_skills_disabled(disabled)
+
+    # ------------------------------------------------------------------
+    # Internal — validation
+    # ------------------------------------------------------------------
+
+    def _assert_agent_name_available(
+        self,
+        user_id: int | None,
+        name: str,
+        *,
+        exclude_agent_id: str | None = None,
+    ) -> None:
+        if user_id is None:
+            return
+        for row in self._repos.agent_repo.list_by_user(user_id):
+            if row.name == name and row.agent_id != exclude_agent_id:
+                raise OctopError(
+                    ErrorCode.AGENT_NAME_TAKEN,
+                    f"agent name {name!r} already in use",
+                )
+
+    # ------------------------------------------------------------------
+    # Internal — agent startup & workspace seeding
+    # ------------------------------------------------------------------
+
+    async def _complete_create_bootstrap(self, row: AgentRow) -> None:
+        """Start harness runtime after create (expert files are already seeded on disk)."""
+        try:
+            fresh = self._repos.agent_repo.get(row.agent_id)
+            if fresh is None:
+                return
+            agent = await self._start_agent(fresh, init_workspace=True)
+            if agent is not None and fresh.template_name:
+                reload = getattr(agent, "reload_subagents", None)
+                if callable(reload):
+                    await asyncio.to_thread(reload)
+        except Exception:
+            logger.exception("Deferred bootstrap failed for agent %s", row.agent_id)
+
+    async def _start_agent(
+        self, row: AgentRow, *, init_workspace: bool = True
+    ) -> HarnessAgent | None:
+        assert self._harness_manager is not None, "_start_agent called before boot()"
+        if self._harness_manager.shared_factory is None:
+            self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
+            return None
+        try:
+            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+            entry = await self._harness_manager.acreate_agent(
+                cfg,
+                agent_id=row.agent_id,
+                metadata=metadata,
+                tags=tags,
+                init_workspace=init_workspace,
+            )
+            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+            self._repos.agent_repo.set_state(row.agent_id, "running")
+            logger.info("Agent %s (%s) started", row.agent_id, row.name)
+            return entry.agent
+        except Exception as exc:
+            logger.exception("Failed to start agent %s", row.agent_id)
+            self._repos.agent_repo.set_state(
+                row.agent_id,
+                "failed",
+                error=format_agent_start_error(exc),
+            )
+            return None
+
+    async def _post_start_agent(
+        self,
+        row: AgentRow,
+        agent: HarnessAgent,
+        cfg: HarnessAgentConfig,
+        *,
+        user_display: str = "User",
+    ) -> None:
+        uid = self._connector_uid_for(row)
+        if uid is not None:
+            inject_missing_gateway_tools(
+                agent,
+                svc=self._connector_svc,
+                connector_repo=self._repos.connector_repo,
+                user_id=uid,
+                agent_id=row.agent_id,
+                mcp_server_configs=cfg.mcp_server_configs,
+            )
+        tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
+        logger.info(
+            "Agent %s started with mcp_servers=%s mcp_tool_count=%d tools_sample=%s",
+            row.agent_id,
+            sorted(agent.config.mcp_server_configs.keys()),
+            len(tool_set),
+            sorted(tool_set)[:8],
+        )
+        ws = agent.workspace
+        if self._plugin_manager is not None:
+            await asyncio.to_thread(self._plugin_manager.sync_skills_to_workspace, ws)
+
+        # Patch config when bootstrap finishes, but defer graph recompile until
+        # the in-flight turn has fully drained (sync _init_graph mid-stream segfaults).
+        if not agent.is_bootstrapped():
+            agent_id = row.agent_id
+
+            def _on_bootstrap_complete() -> None:
+                self._mark_bootstrap_graph_refresh_pending(agent_id, agent)
+
+            agent.on_bootstrap_complete = _on_bootstrap_complete
+
+    def _mark_bootstrap_graph_refresh_pending(self, agent_id: str, agent: HarnessAgent) -> None:
+        """Record DB-backed config updates; graph rebuild runs on the next turn."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return
+        agent._config.system_prompt = row.system_prompt
+        if agent._config.memory == ():
+            agent._config.memory = None
+        self._bootstrap_graph_refresh_pending.add(agent_id)
+        logger.info(
+            "Bootstrap complete for agent %s — graph refresh deferred to next turn",
+            agent_id,
+        )
+
+    def _apply_pending_bootstrap_graph_refresh(self, agent_id: str) -> None:
+        """Recompile harness graph after bootstrap once no stream is in progress."""
+        if agent_id not in self._bootstrap_graph_refresh_pending:
+            return
+        if self._harness_manager is None:
+            return
+        try:
+            entry = self._harness_manager.get_agent(agent_id)
+        except KeyError:
+            return
+        self._bootstrap_graph_refresh_pending.discard(agent_id)
+        try:
+            entry.agent._init_graph()
+            logger.info("Bootstrap graph refresh applied for agent %s", agent_id)
+        except Exception:
+            logger.exception("Bootstrap graph refresh failed for agent %s", agent_id)
+            self._bootstrap_graph_refresh_pending.add(agent_id)
+
+    def _agent_config_dict(self, row: AgentRow) -> dict[str, Any]:
+        try:
+            cfg = json.loads(row.config_json or "{}")
+            if not isinstance(cfg, dict):
+                return {}
+        except Exception:
+            return {}
+        return cfg
+
+    def _backend_spec_for_row(self, row: AgentRow) -> Any:
+        from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
+
+        cfg = self._agent_config_dict(row)
+        backend_spec = cfg.get("backend")
+        if backend_spec is None:
+            return DEFAULT_BACKEND_SPEC
+        return resolve_agent_backend_spec(
+            backend_spec,
+            repo=self._repos.storage_backend_repo,
+        )
+
+    def _backend_workspace_for_row(self, row: AgentRow) -> Any:
+        """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
+        from harness_agent.backends import resolve_backend  # noqa: PLC0415
+        from harness_agent.backends.workspace import BackendWorkspace  # noqa: PLC0415
+
+        workspace_dir = self._paths.ensure_agent_workspace(row.agent_id)
+        backend = self._backend_spec_for_row(row)
+        return BackendWorkspace(
+            resolve_backend(backend, workspace_dir=workspace_dir), workspace_dir
+        )
+
+    async def _seed_expert_template(self, row: AgentRow, template_name: str) -> None:
+        """Copy bundled expert files into the agent workspace before harness start."""
+        if self._expert_catalog is None:
+            logger.warning(
+                "Agent %s: template_name=%r set but no expert_catalog configured; skipping",
+                row.agent_id,
+                template_name,
+            )
+            return
+
+        expert = self._expert_catalog.get(template_name)
+        if expert is None:
+            logger.warning(
+                "Agent %s: expert %r not found in catalog; skipping template copy",
+                row.agent_id,
+                template_name,
+            )
+            return
+
+        from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
+            MANIFEST_FILENAME,
+            seed_expert_directory,
+        )
+
+        expert_dir = self._expert_catalog.expert_dir(template_name)
+        if not expert.files and not (expert_dir / MANIFEST_FILENAME).is_file():
+            return
+
+        workspace = self._backend_workspace_for_row(row)
+        try:
+            count = await seed_expert_directory(
+                expert_dir=expert_dir,
+                workspace=workspace,
+                seed_paths=expert.files,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Agent %s: expert template %r seed failed: %s",
+                row.agent_id,
+                template_name,
+                exc,
+            )
+            return
+        logger.info(
+            "Agent %s: seeded expert template %r (%d files)",
+            row.agent_id,
+            template_name,
+            count,
+        )
+
+    # ------------------------------------------------------------------
+    # Internal — background reload worker
+    # ------------------------------------------------------------------
+
+    async def _reload_agent(self, agent_id: str) -> None:
+        assert self._harness_manager is not None
+        self._bootstrap_graph_refresh_pending.discard(agent_id)
+        row = self._repos.agent_repo.get(agent_id)
+        if not row or not row.enabled or row.last_state == "stopped":
+            await self._harness_manager.aremove_agent(agent_id)
+            return
+        if self._harness_manager.shared_factory is None:
+            return
+        try:
+            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+            entry = await self._harness_manager.arebuild_agent(
+                agent_id,
+                cfg,
+                metadata=metadata,
+                tags=tags,
+            )
+            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+            self._repos.agent_repo.set_state(agent_id, "running", error=None)
+        except Exception as exc:
+            logger.exception("Background reload failed for agent %s", agent_id)
+            self._repos.agent_repo.set_state(
+                agent_id,
+                "failed",
+                error=format_agent_start_error(exc),
+            )
+
+    async def _reload_agents_needing_model(self) -> None:
+        """Restart agents that never came up because models were configured later."""
+        for row in self._repos.agent_repo.list_all(include_disabled=False):
+            if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD:
+                await self._reload_agent(row.agent_id)
+
+    def _schedule_reload(self, agent_id: str) -> None:
+        """Queue a background harness reload; coalesces rapid successive updates."""
+        self._reload_dirty.add(agent_id)
+        if self._reload_worker_running.get(agent_id):
+            return
+        self._reload_worker_running[agent_id] = True
+        asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
+
+    async def _reload_worker(self, agent_id: str) -> None:
+        try:
+            while agent_id in self._reload_dirty:
+                self._reload_dirty.discard(agent_id)
+                try:
+                    await self._reload_agent(agent_id)
+                except Exception:
+                    logger.exception("Background reload failed for agent %s", agent_id)
+                if agent_id not in self._reload_dirty:
+                    break
+        finally:
+            self._reload_worker_running[agent_id] = False
+            if agent_id in self._reload_dirty:
+                self._schedule_reload(agent_id)
+
+    # ------------------------------------------------------------------
+    # Internal — harness config assembly & stream request prep
+    # ------------------------------------------------------------------
+
+    def _agent_runtime_bundle(
+        self, row: AgentRow
+    ) -> tuple[HarnessAgentConfig, dict[str, Any], list[str], str]:
+        from octop.infra.utils.browser_media import (  # noqa: PLC0415
+            agent_outbound_screenshots_dir,
+            configure_browser_screenshots_dir,
+        )
+
+        configure_browser_screenshots_dir(
+            agent_outbound_screenshots_dir(self._paths, row.agent_id),
+        )
+        user_display = "User"
+        if row.user_id is not None:
+            owner = self._repos.user_repo.get(row.user_id)
+            if owner is not None:
+                user_display = owner.display_name or owner.username or user_display
+        cfg = self._build_harness_config(row)
+        metadata: dict[str, Any] = {
+            "user_id": row.user_id,
+            "description": row.description,
+            "icon": row.icon,
+            "template_name": row.template_name,
+        }
+        tags: list[str] = []
+        if row.template_name:
+            tags.append(row.template_name)
+        return cfg, metadata, tags, user_display
+
+    def _connector_uid_for(
+        self,
+        row: AgentRow,
+        *,
+        connector_user_id: int | None = None,
+    ) -> int | None:
+        override = self._connector_user_override.get(row.agent_id)
+        if override is not None:
+            return override
+        if connector_user_id is not None:
+            return connector_user_id
+        return row.user_id
+
+    def _prepare_stream_request(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from harness_agent.plugins import collect_plugin_tool_configs  # noqa: PLC0415
+
+        req = dict(request)
+        if req.get("agent_id") is None:
+            req["agent_id"] = agent_id
+        agent_cfg = self.get_config(agent_id)
+        plugins_cfg = agent_cfg.get("plugins")
+        tool_configs = collect_plugin_tool_configs(
+            plugins_cfg if isinstance(plugins_cfg, dict) else None
+        )
+        if tool_configs:
+            configurable = dict(req.get("configurable") or {})
+            configurable["plugin_tool_configs"] = tool_configs
+            req["configurable"] = configurable
+        return req
+
+    def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
+        """Convert an AgentRow into a HarnessAgentConfig."""
+        from harness_agent.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
+
+        workspace_dir = self._paths.ensure_agent_workspace(row.agent_id)
+        cfg = self._agent_config_dict(row)
+
+        backend = self._backend_spec_for_row(row)
+        ws = self._backend_workspace_for_row(row)
+
+        cron_tools: list[Any] | None = None
+        if self._cron_manager is not None:
+            from octop.infra.cron.tools import build_cronjob_tools  # noqa: PLC0415
+
+            cron_tools = build_cronjob_tools(self._cron_manager)
+
+        from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
+
+        agent_plugins = cfg.get("plugins") if isinstance(cfg.get("plugins"), dict) else {}
+        global_plugins = (
+            self._plugin_manager.global_enabled_map() if self._plugin_manager is not None else {}
+        )
+        plugin_tools = build_plugin_tools(
+            agent_plugins=agent_plugins,
+            global_plugins=global_plugins,
+        )
+        plugin_middleware = PluginRegistry().build_middleware_chain(global_enabled=global_plugins)
+        from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
+
+        agent_middleware = [*plugin_middleware, BinaryReadGuardMiddleware()]
+
+        merged_tools: list[Any] = []
+        if cron_tools:
+            merged_tools.extend(cron_tools)
+        merged_tools.extend(plugin_tools)
+        if self._harness_manager is not None:
+            merged_tools.extend(self._harness_manager.team.team_tools())
+
+        acp_section = cfg.get("acp")
+        acp_raw: dict[str, Any] = acp_section if isinstance(acp_section, dict) else {}
+        from harness_agent.acp.models import ACPConfig
+
+        acp_user_id = row.user_id
+        if acp_user_id is None:
+            acp_user_id = self._connector_user_override.get(row.agent_id)
+        runners_dict = (
+            self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
+        )
+        acp_config = ACPConfig.from_dict({"runners": runners_dict})
+
+        system_prompt = row.system_prompt
+        memory: tuple[str, ...] | None = None
+        if not bootstrap_marker_exists(ws):
+            system_prompt = None
+            memory = ()
+
+        uid = self._connector_uid_for(row)
+        mcp_server_configs: dict[str, Any] = {}
+        if uid is not None:
+            mcp_server_configs = build_mcp_server_configs_for_user(
+                svc=self._connector_svc,
+                connector_repo=self._repos.connector_repo,
+                user_id=uid,
+                agent_id=row.agent_id,
+                agent_user_id=row.user_id,
+                config=self._config,
+            )
+        elif row.user_id is None:
+            logger.warning(
+                "_build_harness_config agent=%s agent.user_id=NULL and no connector_user_override — "
+                "mcp_server_configs will be empty (shared agent needs chat user id)",
+                row.agent_id,
+            )
+
+        harness_cfg = HarnessAgentConfig(
+            name=_memory_namespace(row.agent_id),
+            workspace_dir=workspace_dir,
+            default_model=self._providers.resolve_explicit_default_model(row, cfg),
+            system_prompt=system_prompt,
+            memory=memory,
+            backend=backend,  # resolved spec; harness re-resolves to a runtime instance
+            mcp_server_configs=mcp_server_configs,
+            tools=merged_tools or None,
+            middleware=agent_middleware or None,
+            bootstrap_enabled=True,
+            acp_runners=acp_config.runners,
+            acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
+            skills_disabled=frozenset(skills_disabled_set(cfg)),
+            default_timezone=self._config.cron_timezone,
+        )
+        global_policy = self._security.harness_policy()
+        agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
+        policy = SecurityPolicy.merge(global_policy, agent_override)
+        applied = policy.apply_to_config(harness_cfg)
+        if backend_spec_supports_execution(applied.backend) and applied.permissions:
+            logger.debug(
+                "Omitting filesystem permissions for agent %s: backend supports shell execution",
+                row.agent_id,
+            )
+            applied = replace(applied, permissions=None)
+        return replace(
+            applied,
+            tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
+        )

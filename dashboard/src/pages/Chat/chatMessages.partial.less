@@ -1,0 +1,998 @@
+/* Message list, bubbles, tools, thinking */
+/* ---------- Message list ---------- */
+.messageListWrapper {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 0 24px;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+
+  /* Custom scrollbar for visual polish */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--fn-border-primary);
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--fn-text-quaternary);
+    }
+  }
+}
+
+.scrollToBottomBtn {
+  /* Layout: centered, floating above the message list */
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  z-index: 10;
+
+  /* Base appearance */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 16px 7px 14px;
+  background: var(--fn-bg-primary);
+  border: 1px solid rgba(232, 93, 117, 0.18);
+  border-radius: 999px;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 1px 4px rgba(232, 93, 117, 0.08);
+  white-space: nowrap;
+
+  /* Smooth transitions for hover and visibility changes */
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast),
+    box-shadow var(--fn-transition-fast),
+    opacity 0.22s ease,
+    transform 0.22s ease,
+    visibility 0.22s;
+
+  /* Visible state — default is visible so the initial fadeIn animation plays */
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-brand);
+    border-color: rgba(232, 93, 117, 0.32);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.12),
+      0 2px 8px rgba(232, 93, 117, 0.14);
+    transform: translateX(-50%) translateY(-2px);
+  }
+
+  &:active {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+/* Explicit visible state — entrance from below */
+.scrollToBottomBtnVisible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+  animation: scrollBtnEnter 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Hidden state — exits downward, pointer-events disabled to avoid ghost clicks */
+.scrollToBottomBtnHidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@keyframes scrollBtnEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.messageListInner {
+  max-width: 960px;
+  min-width: 280px;
+  margin: 0 auto;
+  padding: 0 24px;
+
+  @media (max-width: 767px) {
+    padding: 0 12px;
+  }
+}
+
+.messageListLoading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.historyLoadMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 0 16px;
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+}
+
+/* ---------- Message bubbles ---------- */
+.messageBubble {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  animation: fadeIn 0.25s ease;
+}
+
+/* Grouped assistant turn: process summary + final answer as separate rows */
+.assistantTurn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  animation: fadeIn 0.25s ease;
+
+  .messageBubble {
+    margin-bottom: 0;
+  }
+}
+
+/* Legacy grouped bubbles (kept for compatibility) */
+.assistantGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  animation: fadeIn 0.25s ease;
+  border-radius: 12px;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(232, 93, 117, 0.015);
+  }
+
+  > .messageBubble,
+  > div > .messageBubble {
+    margin-bottom: 0;
+  }
+}
+
+/* Compact mode: zero spacing for seamless group connection */
+.compactBubble {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.userBubble {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+
+  /* User bubble content should shrink-to-fit, not stretch full width */
+  .bubbleContent {
+    flex: 0 1 auto;
+    max-width: min(75%, 600px);
+  }
+}
+
+.assistantBubble {
+  flex-direction: row;
+}
+
+.errorBubble .bubbleContent {
+  color: var(--fn-color-danger);
+}
+
+.errorBubble .assistantText {
+  color: var(--fn-color-danger);
+}
+
+.avatarCol {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.botAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--fn-radius-full);
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+
+  img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+  }
+}
+
+.bubbleContent {
+  max-width: 100%;
+  min-width: 0;
+  flex: 1;
+
+  &:hover .msgCopyBtn {
+    opacity: 1;
+  }
+
+  @media (max-width: 767px) {
+    max-width: min(95%, calc(100vw - 60px));
+  }
+}
+
+.userText {
+  background: linear-gradient(135deg, var(--fn-color-brand) 0%, #f07c95 100%);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 16px 16px 6px 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  @media (max-width: 767px) {
+    font-size: 15px;
+  }
+}
+
+.userComposerTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 5px;
+  justify-content: flex-end;
+  opacity: 0.92;
+}
+
+.assistantText {
+  background: rgba(15, 23, 42, 0.025);
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: none;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--fn-text-primary);
+  word-break: break-word;
+  box-shadow: none;
+  position: relative;
+  overflow: visible;
+
+  @media (max-width: 767px) {
+    font-size: 16px;
+  }
+
+  // Markdown reset
+  :global {
+    p {
+      margin: 0 0 10px;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+    pre {
+      margin: 10px 0;
+      border-radius: var(--fn-radius-md);
+      overflow-x: auto;
+    }
+    code {
+      font-size: 13.5px;
+    }
+    ul,
+    ol {
+      padding-left: 22px;
+      margin: 6px 0;
+    }
+    a {
+      color: var(--fn-text-brand);
+    }
+  }
+}
+
+/* Group position variants: transparent background — no visual border differences */
+.assistantText.groupFirst,
+.assistantText.groupMiddle,
+.assistantText.groupLast {
+  padding: 2px 0;
+}
+
+/* Streaming cursor */
+.cursor {
+  display: inline-block;
+  width: 7px;
+  height: 16px;
+  margin-left: 2px;
+  background: var(--fn-color-brand);
+  border-radius: 1px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s steps(2) infinite;
+}
+
+@keyframes blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Thinking indicator ---------- */
+.thinkingBubble {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+  animation: fadeIn 0.3s ease;
+}
+
+.thinkingContent {
+  background: var(--fn-bg-secondary);
+  padding: 10px 16px;
+  border-radius: 4px 18px 18px 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.thinkingText {
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  margin-left: 4px;
+  animation: thinkingFadeInOut 2s ease-in-out infinite;
+}
+
+@keyframes thinkingFadeInOut {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.thinkingCancelBtn {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    color var(--fn-transition-fast),
+    border-color var(--fn-transition-fast),
+    background var(--fn-transition-fast);
+
+  &:hover {
+    color: var(--fn-color-danger);
+    border-color: var(--fn-color-danger);
+    background: var(--fn-bg-danger-light);
+  }
+}
+
+.thinkingDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--fn-radius-full);
+  background: var(--fn-color-brand, var(--fn-text-tertiary));
+  opacity: 0.6;
+  animation: thinkingPulse 1.4s ease-in-out infinite;
+
+  &:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  &:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+
+@keyframes thinkingPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* "Continuing" indicator — shown between tool completion and next text delta */
+.continuingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  animation: fadeIn 0.3s ease;
+}
+
+.continuingText {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  margin-left: 4px;
+  animation: thinkingFadeInOut 2s ease-in-out infinite;
+}
+
+/* ---------- Tool-only message row (no bubble wrapper) ---------- */
+.toolOnlyRow {
+  padding: 2px 0;
+}
+
+/* ---------- Inline tool details ---------- */
+.inlineToolBlock {
+  margin-top: 8px;
+  padding: 0;
+  border-top: none;
+}
+
+.inlineToolSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.02));
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+    border-color: rgba(232, 93, 117, 0.2);
+  }
+}
+
+.inlineToolLabel {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(232, 93, 117, 0.08);
+  color: var(--fn-text-brand);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.inlineToolName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-primary);
+  font-size: 12px;
+}
+
+.inlineToolStatus {
+  margin-left: auto;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.inlineToolChevron {
+  flex-shrink: 0;
+  color: var(--fn-text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.inlineToolChevronOpen {
+  transform: rotate(90deg);
+}
+
+.inlineToolDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.inlineToolMediaPreview {
+  margin-top: 8px;
+}
+
+.toolMediaStrip {
+  margin: 8px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toolMediaVideo {
+  max-width: min(280px, 85vw);
+  max-height: 200px;
+  border-radius: 8px;
+  background: #000;
+}
+
+.toolMediaImage {
+  max-width: min(220px, 65vw);
+  max-height: 160px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.toolMediaFallback {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.inlineToolSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inlineToolSectionLabel {
+  color: var(--fn-text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inlineToolCode {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--fn-bg-quaternary, rgba(0, 0, 0, 0.03));
+  color: var(--fn-text-primary);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.inlineToolHint {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.acpPermissionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hitlCard {
+  border: 1px solid var(--fn-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fn-bg-elevated, var(--fn-bg-container));
+}
+
+.hitlTitle {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.hitlAction {
+  margin-bottom: 8px;
+}
+
+.hitlResolved {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.hitlResolvedApproved {
+  color: var(--fn-color-success, #389e0d);
+}
+
+.hitlResolvedRejected {
+  color: var(--fn-color-error, #cf1322);
+}
+
+/* ---------- Assistant turn process summary (tools + thinking) ---------- */
+.processSummaryRow {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.processSummary {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(15, 23, 42, 0.025);
+}
+
+.assistantTurnAnswer {
+  min-width: 0;
+}
+
+.openBrowserPrompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 22%, transparent);
+  border-radius: 10px;
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 5%,
+    var(--fn-bg-primary)
+  );
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    color: var(--fn-color-brand);
+    background: color-mix(
+      in srgb,
+      var(--fn-color-brand) 9%,
+      var(--fn-bg-primary)
+    );
+    border-color: color-mix(in srgb, var(--fn-color-brand) 38%, transparent);
+    box-shadow: 0 2px 8px
+      color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+
+    .openBrowserPromptArrow {
+      transform: translateX(2px);
+      color: var(--fn-color-brand);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.openBrowserPromptActive {
+  border-color: color-mix(in srgb, var(--fn-color-brand) 42%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 8%,
+    var(--fn-bg-primary)
+  );
+}
+
+.openBrowserPromptIcon {
+  flex-shrink: 0;
+  color: var(--fn-color-brand);
+}
+
+.openBrowserPromptArrow {
+  flex-shrink: 0;
+  color: var(--fn-text-tertiary);
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
+}
+
+.processSummaryToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.processSummaryText {
+  flex: 1;
+  min-width: 0;
+}
+
+.processSummaryChevron {
+  flex-shrink: 0;
+  color: var(--fn-text-quaternary);
+  transition: transform 0.2s ease;
+}
+
+.processSummaryChevronOpen {
+  transform: rotate(90deg);
+}
+
+.processSummaryBody {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.processThinkingItem {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 2px solid var(--fn-border-secondary);
+  background: var(--fn-bg-subtle, rgba(0, 0, 0, 0.02));
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.processToolItem {
+  min-width: 0;
+}
+
+/* ---------- Thinking/reasoning collapsible panel ---------- */
+.thinkingBlock {
+  margin-bottom: 12px;
+  border-radius: 0;
+  border: none;
+  border-left: 1.5px solid var(--fn-border-secondary, rgba(100, 100, 100, 0.12));
+  background: transparent;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+
+  &:hover {
+    border-left-color: rgba(232, 93, 117, 0.35);
+  }
+}
+
+.thinkingSummary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary, #888);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    background: rgba(100, 100, 100, 0.03);
+    color: var(--fn-text-secondary, #666);
+  }
+}
+
+.thinkingLabel {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.thinkingSummaryText {
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.thinkingChevron {
+  flex-shrink: 0;
+  color: var(--fn-text-quaternary, #999);
+  transition: transform 0.2s ease;
+  margin-left: auto;
+}
+
+.thinkingChevronOpen {
+  transform: rotate(90deg);
+}
+
+.thinkingPanel {
+  padding: 4px 12px 10px;
+  border-top: none;
+  font-size: 14px;
+  color: var(--fn-text-secondary, #555);
+  opacity: 0.92;
+  animation: thinkingPanelFadeIn 0.22s ease both;
+  overflow: hidden;
+}
+
+@keyframes thinkingPanelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 0.88;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- Message timestamp & usage ---------- */
+.msgTime {
+  font-size: 10px;
+  color: var(--fn-text-quaternary);
+  margin-top: 4px;
+  padding: 0 4px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msgTimeRight {
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.msgMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 0 4px;
+  opacity: 0.5;
+  font-size: 10px;
+  transition: opacity 0.2s;
+
+  .messageBubble:hover & {
+    opacity: 0.9;
+  }
+}
+
+.msgMetaRowRight {
+  justify-content: flex-end;
+}
+
+.msgUsage {
+  font-size: 10px;
+  color: var(--fn-text-quaternary);
+  user-select: none;
+}
+
+.errorDebugRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.errorDebugTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-secondary);
+  color: var(--fn-color-danger, #ff4d4f);
+  font-size: 10px;
+  line-height: 1.4;
+  user-select: text;
+}
+
+/* ---------- Message copy button ---------- */
+
+/* User message: copy button on the left-top of the bubble */
+.userMsgRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+
+  &:hover .msgCopyBtn {
+    opacity: 1;
+  }
+}
+
+.userMsgColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.msgCopyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-sm);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--fn-transition-fast),
+    color var(--fn-transition-fast),
+    background var(--fn-transition-fast);
+  padding: 0;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}

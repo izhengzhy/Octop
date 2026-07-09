@@ -1,0 +1,98 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useIsMobile } from "../../../hooks/useIsMobile";
+import type { WelcomeQuickCard } from "../components/WelcomeScreen";
+
+const MAX_DEFAULT_ROWS = 3;
+const MOBILE_MIN_VISIBLE = 2;
+
+export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
+  const isMobile = useIsMobile();
+  const welcomeRef = useRef<HTMLDivElement | null>(null);
+  const headingRef = useRef<HTMLDivElement | null>(null);
+  const sectionTitleRef = useRef<HTMLSpanElement | null>(null);
+  const probeRef = useRef<HTMLDivElement | null>(null);
+  const [defaultVisible, setDefaultVisible] = useState<number>(
+    quickCards.length,
+  );
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setExpanded(false);
+    setDefaultVisible(quickCards.length);
+  }, [quickCards]);
+
+  useLayoutEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      const cols = w < 480 ? 1 : w < 768 ? 2 : w < 1200 ? 2 : 3;
+      const maxByRows = MAX_DEFAULT_ROWS * cols;
+
+      if (!isMobile) {
+        setDefaultVisible(Math.min(quickCards.length, maxByRows));
+        return;
+      }
+
+      const container = welcomeRef.current;
+      const probe = probeRef.current;
+      if (!container || !probe || quickCards.length === 0) {
+        setDefaultVisible(
+          Math.max(MOBILE_MIN_VISIBLE, Math.min(quickCards.length, maxByRows)),
+        );
+        return;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const headingHeight =
+        headingRef.current?.getBoundingClientRect().height ?? 0;
+      const sectionTitleHeight =
+        sectionTitleRef.current?.getBoundingClientRect().height ?? 0;
+      const cardHeight = probe.getBoundingClientRect().height;
+      if (cardHeight <= 0) return;
+
+      const reserved = 18 + 36 + 24;
+      const available =
+        containerRect.height - headingHeight - sectionTitleHeight - reserved;
+      const rowGap = 8;
+      const rowsFit = Math.max(
+        1,
+        Math.floor((available + rowGap) / (cardHeight + rowGap)),
+      );
+      const rows = cols === 1 ? rowsFit : Math.min(MAX_DEFAULT_ROWS, rowsFit);
+      const fit = Math.min(
+        quickCards.length,
+        Math.max(MOBILE_MIN_VISIBLE, rows * cols),
+      );
+      setDefaultVisible(fit);
+    };
+
+    compute();
+
+    const ro = new ResizeObserver(() => compute());
+    if (welcomeRef.current) ro.observe(welcomeRef.current);
+    window.addEventListener("resize", compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", compute);
+    };
+  }, [isMobile, quickCards.length]);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [isMobile]);
+
+  const visibleCount = expanded ? quickCards.length : defaultVisible;
+  const showToggle = quickCards.length > defaultVisible;
+  const cards = quickCards.slice(0, visibleCount);
+
+  return {
+    welcomeRef,
+    headingRef,
+    sectionTitleRef,
+    probeRef,
+    expanded,
+    setExpanded,
+    cards,
+    showToggle,
+    isMobile,
+  };
+}

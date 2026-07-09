@@ -1,0 +1,48 @@
+"""tests/integration/test_preferences_api.py"""
+
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_preferences_bookmarks_roundtrip(env) -> None:
+    client, _srv, auth = env
+    r = await client.get("/api/preferences", headers=auth)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["locale"] in ("zh", "en")
+    assert body["remote_browser_bookmarks"] == []
+
+    bookmarks = [
+        {"url": "https://cloud.tencent.com", "title": "Tencent Cloud"},
+        {"url": "example.com", "title": "Example"},
+    ]
+    r = await client.patch(
+        "/api/preferences",
+        headers=auth,
+        json={"remote_browser_bookmarks": bookmarks},
+    )
+    assert r.status_code == 200
+    saved = r.json()["remote_browser_bookmarks"]
+    assert len(saved) == 2
+    assert saved[0]["url"] == "https://cloud.tencent.com"
+    assert saved[1]["url"] == "https://example.com"
+
+    r = await client.get("/api/preferences", headers=auth)
+    assert r.json()["remote_browser_bookmarks"] == saved
+
+
+@pytest.mark.asyncio
+async def test_preferences_patch_locale_only_still_works(env) -> None:
+    client, _srv, auth = env
+    r = await client.patch("/api/preferences", headers=auth, json={"locale": "en"})
+    assert r.status_code == 200
+    assert r.json()["locale"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_preferences_patch_requires_one_field(env) -> None:
+    client, _srv, auth = env
+    r = await client.patch("/api/preferences", headers=auth, json={})
+    assert r.status_code == 422

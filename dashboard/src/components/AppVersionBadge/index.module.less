@@ -1,0 +1,33 @@
+.headerVersion {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #ff4d4f;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
+  transition:
+    background 0.15s ease,
+    filter 0.15s ease;
+}
+
+.headerVersionMobile {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+
+.headerVersionClickable {
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(1.08);
+  }
+}

@@ -1,0 +1,458 @@
+{
+  "slash": {
+    "error": {
+      "unknown_command": "未知指令：/{name}。输入 /help 查看可用指令。"
+    },
+    "help": {
+      "title": "可用指令"
+    },
+    "list": {
+      "title": {
+        "topics": "话题列表",
+        "sessions": "活跃会话",
+        "recent": "最近对话"
+      },
+      "empty": "暂无对话。"
+    },
+    "history": {
+      "title": "对话统计"
+    },
+    "token": {
+      "title": "Token 用量 · {short}",
+      "unavailable": "Token 用量统计不可用。",
+      "empty": "此话题尚无 Token 用量记录。"
+    },
+    "status": {
+      "title": "会话状态",
+      "model_override": "{model}（话题覆盖）",
+      "model_default": "{model}（Agent 默认）",
+      "model_auto": "auto（Agent / 提供商默认）",
+      "tokens_none": "暂无用量记录",
+      "tokens_summary": "{total:,} tokens（输入 {input:,} / 输出 {output:,}，{turns} 轮）",
+      "context": "{count} 条 checkpoint 消息",
+      "im_channels": "{count} 个（{kinds}）",
+      "owner_shared": "共享（无单一归属用户）",
+      "user_fmt": "{username}（id={user_id}）"
+    },
+    "cron": {
+      "title": "定时任务",
+      "unavailable": "定时任务管理器不可用。",
+      "usage": "用法：/cron list",
+      "empty": "暂无活跃的定时任务。"
+    },
+    "new": {
+      "started": "已开始新对话（{short}）。"
+    },
+    "switch": {
+      "usage": "用法：/switch <话题短 ID>",
+      "not_found": "没有匹配 {short!r} 的话题。",
+      "done": "已切换到 {short}。"
+    },
+    "resume": {
+      "empty": "没有可恢复的上一个对话。",
+      "done": "已恢复 {short}。"
+    },
+    "hitl": {
+      "card_title": "⚠️ 需要工具审批",
+      "card_intro": "智能体请求执行以下工具：",
+      "action_line": "{index}. **{name}**",
+      "card_footer": "回复 `/approve` 批准，或 `/reject 原因` 拒绝。",
+      "card_pending_id": "审批 ID：`{pending_id}`（30 分钟内有效）",
+      "none_pending": "当前会话没有待审批的工具操作。",
+      "invalid_pending_id": "未找到审批 ID `{pending_id}`。可用 `/pending` 查看列表，或不带 ID 使用 `/approve` 批准最新一项。",
+      "not_owner": "仅发起本轮对话的用户可以批准或拒绝。",
+      "expired": "审批请求已过期，请重新发送消息后再试。",
+      "approved_ack": "已批准，继续执行…",
+      "rejected_ack": "已拒绝，继续处理…",
+      "followup_pending": "仍有工具等待您的审批。",
+      "resume_failed": "审批后恢复执行失败：{error}",
+      "pending_title": "待审批工具",
+      "pending_empty": "当前会话没有待审批项。",
+      "pending_line": "`{pending_id}` — {count} 个工具",
+      "dashboard_hint": "控制台聊天请使用审批卡片；IM 通道请使用 `/approve` 或 `/reject`。"
+    },
+    "title": {
+      "usage": "用法：/title <标题>",
+      "done": "标题已设置：{title}"
+    },
+    "delete": {
+      "usage": "用法：/delete <话题短 ID>",
+      "not_found": "没有匹配 {short!r} 的话题。",
+      "active": "无法删除当前活跃话题，请先 /new。",
+      "done": "已删除话题 {short}。"
+    },
+    "pin": {
+      "done": "话题已置顶。"
+    },
+    "unpin": {
+      "done": "已取消置顶。"
+    },
+    "model": {
+      "override": "模型覆盖：{model}",
+      "current": "模型：{model}",
+      "current_default": "模型：{model}（Agent 默认）",
+      "usage": "无模型覆盖。用法：/model <provider:model>",
+      "cleared": "已清除模型覆盖。",
+      "set": "此话题模型 → {model}。"
+    },
+    "compact": {
+      "done": "已压缩上下文，新话题 {short}{archived}。",
+      "archived": "（{count} 条消息已归档为 {short}）"
+    },
+    "agent": {
+      "usage": "用法：/agent list | switch <名称>",
+      "switch_usage": "用法：/agent switch <名称>",
+      "list_title": "你的 Agent",
+      "empty": "暂无 Agent。",
+      "unavailable": "无法获取 Agent 列表。",
+      "not_found": "未找到 Agent：{name}",
+      "switched": "已切换到 Agent **{name}**。",
+      "current": " ← 当前"
+    },
+    "skills": {
+      "usage": "用法：/skills [list]",
+      "title": "技能",
+      "empty": "暂无已安装技能。",
+      "unavailable": "无法获取技能列表。",
+      "enabled": "启用",
+      "disabled": "禁用"
+    },
+    "connectors": {
+      "usage": "用法：/connectors [list]",
+      "title": "连接器",
+      "empty": "暂无已配置凭证的活跃连接器。",
+      "unavailable": "无法获取连接器列表。"
+    },
+    "delegate": {
+      "usage": "用法：/delegate <agent> <任务> | list | cancel <id>",
+      "unavailable": "委托功能暂不可用。",
+      "empty": "暂无委托任务。",
+      "list_title": "最近委托",
+      "started": "委托 `{id}` 已启动 → **{name}**。",
+      "same_agent": "不能委托给当前 Agent。",
+      "cancel_usage": "用法：/delegate cancel <id>",
+      "not_found": "未找到委托：{id}",
+      "cancelled": "委托 `{id}` 已取消。"
+    },
+    "stop": {
+      "done": "已停止生成。",
+      "empty": "当前会话没有进行中的生成。"
+    },
+    "untitled": "（无标题）",
+    "yes": "是",
+    "no": "否",
+    "unknown": "未知",
+    "fields": {
+      "thread": "话题",
+      "messages": "消息数",
+      "title": "标题",
+      "pinned": "置顶",
+      "last_active": "最后活跃",
+      "model_override": "模型覆盖",
+      "input": "输入",
+      "output": "输出",
+      "total": "合计",
+      "turns": "轮次",
+      "octop": "octop",
+      "uptime": "运行时长",
+      "agent": "Agent",
+      "agent_id": "Agent ID",
+      "owner": "归属用户",
+      "chat_user": "对话用户",
+      "workspace": "工作区",
+      "template": "专家模板",
+      "model": "模型",
+      "session": "会话",
+      "channel": "渠道",
+      "context": "上下文",
+      "tokens": "Token",
+      "thread_age": "话题时长",
+      "im_channels": "IM 渠道",
+      "cron_jobs": "定时任务",
+      "last_error": "最近错误"
+    },
+    "catalog": {
+      "categories": {
+        "core": "核心命令",
+        "session": "会话管理",
+        "media": "多媒体",
+        "system": "系统",
+        "debug": "调试"
+      },
+      "help": {
+        "label": "帮助",
+        "description": "按分类列出所有可用斜杠指令"
+      },
+      "status": {
+        "label": "会话状态",
+        "description": "Agent、归属用户、工作区、模型、用量与会话信息"
+      },
+      "model": {
+        "label": "切换模型",
+        "description": "查看、设置或重置当前话题的模型覆盖"
+      },
+      "new": {
+        "label": "新对话",
+        "description": "清空上下文并开始新的对话线程"
+      },
+      "compact": {
+        "label": "压缩记忆",
+        "description": "归档当前上下文并开始新线程"
+      },
+      "stop": {
+        "label": "停止生成",
+        "description": "取消正在进行的回复流"
+      },
+      "history": {
+        "label": "对话统计",
+        "description": "查看消息数量与话题元数据"
+      },
+      "token": {
+        "label": "Token 用量",
+        "description": "查看当前话题的 Token 用量"
+      },
+      "list": {
+        "label": "会话列表",
+        "description": "列出最近的对话线程"
+      },
+      "switch": {
+        "label": "切换会话",
+        "description": "通过后 6 位 ID 切换到历史会话"
+      },
+      "resume": {
+        "label": "恢复会话",
+        "description": "切回上一个对话，或使用 /resume <短 ID>"
+      },
+      "approve": {
+        "label": "批准工具",
+        "description": "批准已暂停的工具执行（IM 通道）"
+      },
+      "reject": {
+        "label": "拒绝工具",
+        "description": "拒绝已暂停的工具执行，可附带原因"
+      },
+      "pending": {
+        "label": "待审批",
+        "description": "列出等待您决定的工具审批"
+      },
+      "title": {
+        "label": "设置标题",
+        "description": "为当前对话设置标题"
+      },
+      "delete": {
+        "label": "删除会话",
+        "description": "按短 ID 删除历史会话（不能删除当前活跃会话）"
+      },
+      "pin": {
+        "label": "置顶会话",
+        "description": "置顶当前对话"
+      },
+      "unpin": {
+        "label": "取消置顶",
+        "description": "取消当前对话置顶"
+      },
+      "cron": {
+        "label": "定时任务",
+        "description": "列出此 Agent 的定时任务"
+      },
+      "agent": {
+        "label": "Agent 管理",
+        "description": "列出或切换当前 Agent"
+      },
+      "skills": {
+        "label": "技能",
+        "description": "列出此 Agent 已安装的技能"
+      },
+      "connectors": {
+        "label": "连接器",
+        "description": "列出已配置凭证的活跃连接器"
+      },
+      "exit": {
+        "label": "退出",
+        "description": "结束 CLI 会话"
+      }
+    }
+  },
+  "errors": {
+    "AUTH_FAILED": "认证失败。",
+    "TOKEN_EXPIRED": "登录已过期，请重新登录。",
+    "SETUP_REQUIRED": "需要完成初始设置。",
+    "FORBIDDEN": "没有权限。",
+    "NOT_FOUND": "未找到。",
+    "USER_DISABLED": "账号已禁用。",
+    "LOGIN_LOCKED": "登录失败次数过多，请 {minutes} 分钟后再试。",
+    "USERNAME_TAKEN": "用户名已被占用。",
+    "AGENT_NOT_FOUND": "未找到 Agent。",
+    "AGENT_FAILED": "Agent 启动失败。",
+    "AGENT_BUSY": "Agent 正忙。",
+    "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",
+    "PROVIDER_NAME_TAKEN": "提供商名称已被占用。",
+    "PROVIDER_NOT_VISIBLE": "提供商不可见。",
+    "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
+    "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
+    "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
+    "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
+    "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
+    "CONNECTOR_NOT_FOUND": "未找到连接器。",
+    "CONNECTOR_INVALID_CREDENTIALS": "连接器凭证无效。",
+    "CONNECTOR_KIND_UNSUPPORTED": "不支持的连接器类型。",
+    "CONNECTOR_NOT_BOUND": "连接器未绑定到此 Agent。",
+    "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
+    "CRON_TRIGGER_INVALID": "无效的定时触发器。",
+    "SLASH_UNKNOWN": "未知的斜杠指令。",
+    "SLASH_BAD_ARGS": "参数无效。",
+    "VOICE_BROWSER_ONLY": "语音输入仅在浏览器中可用。",
+    "VOICE_KIND_UNSUPPORTED": "不支持的语音提供商。",
+    "VOICE_CAPABILITY_MISMATCH": "语音能力不匹配。",
+    "VOICE_PROVIDER_DISABLED": "语音提供商已禁用。",
+    "INTERNAL_ERROR": "服务器内部错误。",
+    "TLS_NOT_ELIGIBLE": "当前服务器配置不支持 TLS 证书申请。",
+    "TLS_ISSUE_IN_PROGRESS": "已有证书申请任务正在进行。",
+    "TLS_DOMAIN_MISMATCH": "域名与现有证书不一致。",
+    "WORKSPACE_OP_UNSUPPORTED": "当前工作区后端不支持该文件操作。",
+    "SKILL_IMPORT_UNSUPPORTED_URL": "不支持该技能 URL 来源。",
+    "SKILL_IMPORT_FAILED": "技能导入失败：{reason}",
+    "SKILL_ALREADY_EXISTS": "技能 {name} 已存在，如需覆盖请启用 overwrite。"
+  },
+  "tls": {
+    "preflight": {
+      "domain": {
+        "fail": "请填写域名。"
+      },
+      "bind_host": {
+        "ok": "bind_host 为 0.0.0.0",
+        "fail": "bind_host 为 {bind_host}；请在 config.json 中设为 0.0.0.0"
+      },
+      "dual_port": {
+        "ok": "双端口监听：HTTP {http_port} + HTTPS {https_port}"
+      },
+      "tls_enabled": {
+        "fail": "TLS 已启用；请使用双端口续期模式（443 + HTTP 80）"
+      },
+      "port": {
+        "ok": "正在监听端口 {http_port}",
+        "fail": "当前端口为 {port}；首次申请前请改为 {http_port} 并重启"
+      },
+      "port_443": {
+        "ok": "端口 {https_port} 可用于签发后的 HTTPS",
+        "fail": "端口 {https_port} 已被其他进程占用"
+      },
+      "dns": {
+        "ok": "{domain} 已解析到本机（{public_ip}）",
+        "fail": "{domain} DNS 查询失败：{error}",
+        "fail_empty": "未找到 {domain} 的 A/AAAA 记录",
+        "fail_mismatch": "{domain} 解析为 {resolved_ips}；期望 {public_ip}"
+      },
+      "public_ip": {
+        "fail": "无法获取本机公网 IP（请检查出站 HTTPS）"
+      }
+    },
+    "preflight_failed_summary": "一项或多项预检未通过"
+  },
+  "tools": {
+    "unknown": "未知工具",
+    "read_file": "读取文件",
+    "write_file": "写入文件",
+    "edit_file": "编辑文件",
+    "current_time": "当前时间",
+    "task": "子智能体任务",
+    "ls": "列出目录",
+    "glob": "查找文件",
+    "grep": "搜索内容",
+    "run_terminal_cmd": "运行命令",
+    "web_fetch": "抓取网页",
+    "desktop_screenshot": "桌面截图",
+    "memory_search": "检索记忆",
+    "memory_get": "读取记忆",
+    "tavily_search": "Tavily 联网搜索",
+    "brave_search": "Brave 联网搜索",
+    "google_search": "Google 联网搜索",
+    "kimi_search": "Kimi 联网搜索",
+    "searchfree_search": "AI 联网搜索",
+    "cronjob_list": "列出定时任务",
+    "cronjob_get": "查看定时任务",
+    "cronjob_create": "创建定时任务",
+    "cronjob_update": "更新定时任务",
+    "cronjob_delete": "删除定时任务",
+    "cronjob_run_now": "立即执行定时任务",
+    "agent_list": "列出 Agent",
+    "ask_agent": "咨询 Agent",
+    "call_agent": "调用 Agent",
+    "acp_runner": "ACP 外部 Agent",
+    "browser_use": "使用浏览器",
+    "browser_control": "浏览器控制",
+    "send_file_to_user": "发送文件"
+  },
+  "skills": {
+    "pdf": "PDF 处理",
+    "docx": "Word 文档",
+    "xlsx": "Excel 表格",
+    "pptx": "PPT 演示",
+    "file_reader": "文件读取",
+    "news": "资讯获取",
+    "octop-assistant": "Octop 配置助手",
+    "octop_assistant": "Octop 配置助手",
+    "daily-hot-news": "每日热点",
+    "stock-info": "股票信息",
+    "cvm-ai-doctor": "CVM AI 诊断",
+    "tencentcloud-infra": "腾讯云基础设施",
+    "publisher-multi-platform": "多平台发布"
+  },
+  "channel": {
+    "tool_hint_start": "🔧 正在调用工具：{tool_name}",
+    "tool_hint_end": "✅ {tool_name} 已完成",
+    "runtime": {
+      "disabled": "频道已停用",
+      "unregistered": "未注册",
+      "error": "连接失败"
+    },
+    "probe": {
+      "incomplete": "凭据不完整：缺少 {fields}",
+      "invalid_credentials": "凭据无效，请检查 App ID 与 App Secret 是否正确",
+      "feishu_token_failed": "飞书凭据校验失败：{detail}",
+      "field": {
+        "app_id": "App ID",
+        "app_secret": "App Secret",
+        "secret": "Secret",
+        "bot_id": "Bot ID",
+        "app_key": "Client ID",
+        "bot_token": "Bot Token",
+        "token": "Token",
+        "ak": "AK",
+        "sk": "SK",
+        "agent_id": "Agent ID",
+        "host": "Broker Host"
+      }
+    }
+  },
+  "agents": {
+    "state": {
+      "running": "运行中",
+      "stopped": "已停止",
+      "failed": "启动失败",
+      "starting": "启动中",
+      "stopping": "停止中",
+      "created": "已创建",
+      "error": "异常",
+      "unknown": "未知"
+    }
+  },
+  "agent_errors": {
+    "no_models_configured": "未配置可用模型，请前往「设置 → 模型」配置 Provider，然后重新启用此专家。",
+    "model_ref_unavailable": "默认模型不可用或已禁用，请检查「设置 → 模型」或修改此专家的默认模型后重试。"
+  },
+  "attachment": {
+    "header": "[附件] {filename}",
+    "path": "工作区路径：{path}",
+    "mime": "MIME：{media_type}",
+    "size": "大小：{size} 字节",
+    "empty_message": "[空消息]",
+    "empty_image": "用户发送了图片。",
+    "image_unavailable": "[附件] 图片无法加载到模型。"
+  },
+  "proactive_care": {
+    "system_prompt": "今天是 {today}。\n\n请根据用户近期的生活事件，用温暖自然的语气写一段关心的话，不超过 150 字。\n注意事件发生的时间，不要把几天前的事说成「今天」。\n不要提及你是 AI，直接表达关心即可。",
+    "system_prompt_with_soul": "{soul_md}\n\n---\n\n今天是 {today}。\n\n请根据用户近期的生活事件，用温暖自然的语气写一段关心的话，不超过 150 字。\n注意事件发生的时间，不要把几天前的事说成「今天」。\n不要提及你是 AI，直接表达关心即可。"
+  }
+}
