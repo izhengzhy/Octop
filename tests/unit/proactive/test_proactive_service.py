@@ -95,7 +95,9 @@ def _make_agent(
         llm_msg = MagicMock()
         llm_msg.content = llm_response
         llm.ainvoke = AsyncMock(return_value=llm_msg)
-    agent.get_aux_llm = MagicMock(return_value=llm)
+    model_factory = MagicMock()
+    model_factory.get = MagicMock(return_value=llm)
+    agent.model_factory = model_factory
     # Mock config.
     config = MagicMock()
     config.memory_aux_light_model = "openai/gpt-4o-mini"
@@ -152,7 +154,7 @@ async def test_service_run_success(agent_id: str, care_push_repo: CarePushRepo):
     # Verify dedup records were written.
     pushed = care_push_repo.list_pushed_episode_ids(agent_id)
     assert len(pushed) > 0
-    agent.get_aux_llm.assert_called_once_with("light")
+    agent.model_factory.get.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

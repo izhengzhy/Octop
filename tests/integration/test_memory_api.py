@@ -17,6 +17,15 @@ from typing import Any
 
 import pytest
 
+# `harness_memory` is an optional dependency (lazy-imported by the app); the
+# real package is not part of the base install, so skip these integration
+# tests when it is unavailable rather than failing the whole suite.
+# `harness_memory` is an optional dependency; the app lazy-imports the
+# `harness_memory.lightclaw` bridge at request time. The top-level package
+# may be importable without that submodule present, so skip on the real
+# import target to avoid a ModuleNotFoundError at runtime.
+pytest.importorskip("harness_memory.lightclaw")
+
 from octop.api.common.memory_client import (
     invalidate_cached_memory,
     memory_db_path,

@@ -12,11 +12,9 @@ from octop.infra.setup.password_file import WIZARD_FILE_NAME, read_password
 
 def _wizard_password_home(home: Path) -> Path:
     """Resolve wizard password dir: file lives at ``~/octop-login.txt``, not under ``~/.octop/``."""
-    if (home / WIZARD_FILE_NAME).exists():
-        return home
-    parent = home.parent
-    if (parent / WIZARD_FILE_NAME).exists():
-        return parent
+    for cand in (home, home.parent, Path.home()):
+        if (cand / WIZARD_FILE_NAME).exists():
+            return cand
     return home
 
 

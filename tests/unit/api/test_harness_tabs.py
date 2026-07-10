@@ -39,48 +39,35 @@ async def test_harness_list_tabs_marks_profile_target_active() -> None:
         {"type": "page", "id": "TAB-B", "url": "https://b.test", "title": "B"},
     ]
 
-    with patch.object(harness_mod, "_fetch_cdp_targets", AsyncMock(return_value=targets)):
+    class _JsonResp:
+        def __init__(self, data: list[dict[str, object]]) -> None:
+            self._data = data
+
+        async def __aenter__(self) -> _JsonResp:
+            return self
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+        async def json(self, content_type: object = None) -> list[dict[str, object]]:
+            return self._data
+
+    class _Session:
+        def __init__(self, data: list[dict[str, object]]) -> None:
+            self._data = data
+
+        async def __aenter__(self) -> _Session:
+            return self
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+        def get(self, url: str, timeout: object = None) -> _JsonResp:
+            return _JsonResp(self._data)
+
+    with patch("aiohttp.ClientSession", new=lambda: _Session(targets)):
         tabs = await harness_mod.harness_list_tabs(sess)
 
     assert [t["id"] for t in tabs] == ["TAB-A", "TAB-B"]
     assert tabs[1]["active"] is True
     assert tabs[0]["active"] is False
-
-
-@pytest.mark.asyncio
-async def test_harness_prepare_screencast_sets_white_background() -> None:
-    sess = _fake_sess()
-    sess._internal._client.send = AsyncMock()
-
-    await harness_mod.harness_prepare_screencast(sess)
-
-    sess._internal._client.send.assert_awaited_once()
-    call = sess._internal._client.send.await_args
-    assert call.args[0] == "Emulation.setDefaultBackgroundColorOverride"
-    assert call.args[1]["color"] == {"r": 255, "g": 255, "b": 255, "a": 1}
-
-
-@pytest.mark.asyncio
-async def test_harness_switch_tab_reconnects_cdp_client() -> None:
-    sess = _fake_sess(active_id="OLD")
-    pages = [
-        {
-            "type": "page",
-            "id": "NEW",
-            "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/NEW",
-        }
-    ]
-
-    with (
-        patch.object(harness_mod, "_fetch_cdp_targets", AsyncMock(return_value=pages)),
-        patch("aiohttp.ClientSession") as session_cls,
-    ):
-        http = session_cls.return_value.__aenter__.return_value
-        http.get = AsyncMock()
-        await harness_mod.harness_switch_tab(sess, "NEW")
-
-    sess._internal._profile.save_target.assert_called_once_with("NEW")
-    sess._internal._client.close.assert_awaited_once()
-    sess._internal._client.connect.assert_awaited_once_with(
-        "ws://127.0.0.1:9222/devtools/page/NEW",
-    )

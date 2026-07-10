@@ -48,16 +48,23 @@ class FakeHarnessAgent:
             self._workspace_dir = Path(tempfile.mkdtemp(prefix="octop-fake-ws-"))
             self._backend = _FakeBackend()
             self._workspace = BackendWorkspace(self._backend, self._workspace_dir)
-        self.config = SimpleNamespace(mcp_server_configs={})
+        self.config = SimpleNamespace(mcp_server_configs={}, skills_disabled=frozenset())
         self._mcp_tool_name_set: frozenset[str] = frozenset()
 
-    def use_workspace_dir(self, workspace_dir: Path, *, virtual_mode: bool = True) -> None:
-        """Bind workspace I/O to a real ``local_shell`` backend on disk."""
+    def use_workspace_dir(self, workspace_dir: Path, *, virtual_mode: bool = False) -> None:
+        """Bind workspace I/O to a real ``local_shell`` backend on disk.
+
+        The fake mirrors production's ``root_dir="/"`` behaviour by honoring
+        absolute paths as-is: ``BackendWorkspace`` resolves paths under
+        ``workspace_dir`` and the disk backend writes them there. ``virtual_mode``
+        is forced off so absolute paths are not re-rooted under ``root_dir``
+        (which would nest writes under ``workspace_dir/tmp/...``).
+        """
         from deepagents.backends.local_shell import LocalShellBackend
 
         self._workspace_dir = workspace_dir
         workspace_dir.mkdir(parents=True, exist_ok=True)
-        self._backend = LocalShellBackend(root_dir=str(workspace_dir), virtual_mode=virtual_mode)
+        self._backend = LocalShellBackend(root_dir=str(workspace_dir), virtual_mode=False)
         self._workspace = BackendWorkspace(self._backend, workspace_dir)
 
     async def stream(self, request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
@@ -145,6 +152,94 @@ description: General-purpose agent
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(lambda: asyncio.run(_collect())).result()
+
+    def set_skills_disabled(
+        self,
+        disabled: set[str] | frozenset[str] | list[str] | None,
+    ) -> None:
+        """Hot-update disabled skills (mirrors harness_agent.HarnessAgent)."""
+        self.config.skills_disabled = frozenset(str(x) for x in (disabled or ()))
+
+    async def list_skill_summaries(self) -> list[dict[str, Any]]:
+        """Mirror harness skill catalog: list workspace + builtin ``SKILL.md`` manifests.
+
+        Skills are written via ``agent.workspace`` (the in-memory fake backend for
+        tests, or the real disk-backed backend). Enumerate from whichever store holds
+        them so the listed summaries match what the routers persisted.
+        """
+        from octop.infra.utils.frontmatter import parse_frontmatter
+
+        collected: dict[str, str] = {}
+
+        # In-memory fake backend store (skills are written here by the routers).
+        files = getattr(self._backend, "_files", None)
+        if isinstance(files, dict):
+            for fpath, data in files.items():
+                if not fpath.endswith(".md"):
+                    continue
+                if "/skills/" not in fpath and not fpath.startswith("_builtin_skills/"):
+                    continue
+                if isinstance(data, bytes):
+                    try:
+                        collected[fpath] = data.decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
+                elif isinstance(data, str):
+                    collected[fpath] = data
+
+        # Real disk-backed workspace (e.g. when use_workspace_dir was called).
+        for root in ("skills", "_builtin_skills"):
+            disk_root = self._workspace_dir / root
+            if disk_root.is_dir():
+                for fpath in disk_root.rglob("*.md"):
+                    rel = f"{root}/{fpath.relative_to(disk_root)}"
+                    if rel not in collected:
+                        try:
+                            collected[rel] = fpath.read_text(encoding="utf-8")
+                        except (OSError, UnicodeDecodeError):
+                            continue
+
+        disabled = frozenset(str(x) for x in getattr(self.config, "skills_disabled", frozenset()))
+        # Merge by slug, mirroring the harness catalog: a workspace skill
+        # overrides a builtin of the same slug (later roots win).
+        merged: dict[str, dict[str, Any]] = {}
+        for path in sorted(collected):
+            meta, _ = parse_frontmatter(collected[path])
+            # Slug is the skill directory name (parent of SKILL.md), matching the
+            # harness catalog where ``skills/<slug>/SKILL.md`` is the layout.
+            slug = Path(path).parent.name
+            if not slug or slug.startswith("."):
+                continue
+            # Mirror harness: skip soft-deleted skills (``removed: true`` frontmatter).
+            if meta.get("removed"):
+                continue
+            kind = "builtin" if path.startswith("_builtin_skills/") else "workspace"
+            if slug in merged and not (merged[slug]["kind"] == "builtin" and kind == "workspace"):
+                continue
+            name = str(meta.get("name") or slug)
+            is_disabled = slug in disabled or name in disabled
+            row: dict[str, Any] = {
+                "slug": slug,
+                "name": name,
+                "description": str(meta.get("description") or ""),
+                "path": path,
+                "kind": kind,
+                "enabled": not is_disabled,
+                "disabled": is_disabled,
+            }
+            # Mirror harness: emoji lives under metadata.{octop,lightclaw,orca,harness}.
+            metadata = meta.get("metadata") or {}
+            if isinstance(metadata, dict):
+                for key in ("octop", "lightclaw", "orca", "harness"):
+                    ext = metadata.get(key) or {}
+                    if isinstance(ext, dict) and "emoji" in ext:
+                        row["emoji"] = str(ext["emoji"])
+                        break
+            merged[slug] = row
+        return sorted(
+            merged.values(),
+            key=lambda row: (0 if row["kind"] == "builtin" else 1, str(row["slug"])),
+        )
 
 
 class _FakeBackend:

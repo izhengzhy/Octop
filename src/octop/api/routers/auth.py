@@ -91,10 +91,16 @@ async def update_me(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Update the current user's display name and/or locale."""
-    if body.display_name is not None:
+    """Update the current user's display name and/or locale.
+
+    Use ``model_dump(exclude_unset=True)`` so an explicitly-provided ``null``
+    (e.g. ``{"display_name": null}``) clears the field, while an omitted field
+    leaves the current value untouched.
+    """
+    provided = body.model_dump(exclude_unset=True)
+    if "display_name" in provided:
         await server.user_manager.set_display_name(user.username, body.display_name)
-    if body.locale is not None:
+    if "locale" in provided:
         await server.user_manager.set_locale(user.username, body.locale)
     updated = server.user_manager.get(user.username)
     assert updated is not None

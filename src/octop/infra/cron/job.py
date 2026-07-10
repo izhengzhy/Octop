@@ -7,9 +7,10 @@ import time
 from typing import TYPE_CHECKING
 
 from octop.infra.cron.task_type import normalize_cron_task_type
+from octop.infra.db.repos.audit import ACTOR_SYSTEM
 
 if TYPE_CHECKING:
-    from octop.infra.db.repos.audit import ACTOR_SYSTEM, AuditRepo
+    from octop.infra.db.repos.audit import AuditRepo
     from octop.infra.db.repos.cron import CronJobRepo, CronJobRow
     from octop.infra.gateway.gateway import Gateway
 

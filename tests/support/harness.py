@@ -79,6 +79,26 @@ def build_harness_manager_mock(
     async def _arebuild(agent_id: str, config: Any, **kw: Any) -> AgentEntry:
         old_entry = entries.get(agent_id)
         old_agent = old_entry.agent if old_entry else None
+        # Reuse the existing FakeHarnessAgent on reload so in-memory state
+        # (workspace files, ``skills_disabled``, …) survives the rebuild — a
+        # real running harness agent is the same object across reloads.
+        if isinstance(old_agent, FakeHarnessAgent):
+            ws_dir = old_agent._workspace_dir
+            backend_cfg = getattr(config, "backend", None)
+            virtual_mode = True
+            if isinstance(backend_cfg, dict):
+                virtual_mode = bool(backend_cfg.get("virtual_mode", True))
+            old_agent.use_workspace_dir(ws_dir, virtual_mode=virtual_mode)
+            entry = AgentEntry(
+                agent_id=agent_id,
+                agent=old_agent,
+                config=config,
+                metadata={},
+                tags=[],
+                created_at=datetime.now(tz=UTC),
+            )
+            entries[agent_id] = entry
+            return entry
         ws_dir = old_agent._workspace_dir if isinstance(old_agent, FakeHarnessAgent) else None
         _remove(agent_id)
         entry = await _acreate(config, agent_id=agent_id, init_workspace=False, **kw)
@@ -100,6 +120,25 @@ def build_harness_manager_mock(
     mock_manager.aremove_agent = AsyncMock(side_effect=_aremove)
     mock_manager.get_agent.side_effect = _get_agent
     mock_manager.remove_agent.side_effect = _remove
+
+    def _stream(agent_id: str, request: Any) -> Any:
+        return _get_agent(agent_id).agent.stream(request)
+
+    def _call(agent_id: str, request: Any) -> Any:
+        agent_obj = _get_agent(agent_id).agent
+        if hasattr(agent_obj, "call"):
+            return agent_obj.call(request)
+        raise NotImplementedError("fake agent has no call()")
+
+    def _resume_hitl(agent_id: str, thread_id: str, decisions: Any) -> Any:
+        agent_obj = _get_agent(agent_id).agent
+        if hasattr(agent_obj, "resume_hitl"):
+            return agent_obj.resume_hitl(thread_id, decisions)
+        raise NotImplementedError("fake agent has no resume_hitl()")
+
+    mock_manager.stream = MagicMock(side_effect=_stream)
+    mock_manager.call = MagicMock(side_effect=_call)
+    mock_manager.resume_hitl = MagicMock(side_effect=_resume_hitl)
     mock_manager._shared_factory = None
     mock_manager.shared_factory = None
     mock_manager._providers = []

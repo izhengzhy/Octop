@@ -12,7 +12,9 @@ async def test_provider_test_ok(env_with_provider_record: Any) -> None:
     fake_model = MagicMock()
     fake_model.ainvoke = AsyncMock(return_value=MagicMock(content="pong"))
 
-    with patch("octop.api.routers.providers._build_chat_model", return_value=fake_model):
+    with patch(
+        "octop.infra.agents.providers.probe.build_probe_chat_model", return_value=fake_model
+    ):
         r = await c.post(f"/api/admin/providers/{pid}/test", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -26,7 +28,7 @@ async def test_provider_test_failure(env_with_provider_record: Any) -> None:
     def boom(*_a: Any, **_kw: Any) -> Any:
         raise RuntimeError("auth failed")
 
-    with patch("octop.api.routers.providers._build_chat_model", side_effect=boom):
+    with patch("octop.infra.agents.providers.probe.build_probe_chat_model", side_effect=boom):
         r = await c.post(f"/api/admin/providers/{pid}/test", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()

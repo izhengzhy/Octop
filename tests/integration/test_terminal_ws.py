@@ -23,8 +23,10 @@ async def env(env_terminal):
 def test_router_is_mounted(env: Any) -> None:
     """Smoke: ``/agents/{aid}/terminal/ws`` is in the FastAPI route table."""
     _srv, app, _tok, _aid = env
-    paths = {getattr(r, "path", None) for r in app.routes}
-    assert "/api/agents/{agent_id}/terminal/ws" in paths
+    # FastAPI nests routers as ``_IncludedRouter`` and WebSocket routes report
+    # ``path is None`` at the top level, so resolve by route name instead.
+    url = app.router.url_path_for("terminal_ws", agent_id="x")
+    assert url == "/api/agents/x/terminal/ws"
 
 
 def test_extract_winsize_helper_packs_in_correct_order() -> None:

@@ -70,7 +70,7 @@ async def test_status_endpoint(env):
             "config": {"providers": ["openai"], "default_model": "openai:gpt-4o"},
         },
     )
-    agent_id = r.json()["id"]
+    agent_id = r.json()["agent_id"]
     r = await c.get(f"/api/agents/{agent_id}/status", headers=auth)
     assert r.status_code == 200
     assert "state" in r.json()

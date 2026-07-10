@@ -13,6 +13,7 @@ the test stays focused.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -20,7 +21,23 @@ import pytest
 
 @pytest.fixture
 async def env(env_usage):
+    _c, srv, _admin_auth, _alice_auth, ctx = env_usage
+    # The usage_log table has FOREIGN KEYs to agents(agent_id) and users(id).
+    # These tests log against synthetic agent ids, so seed matching parent
+    # rows up front (users alice_id / 1 already exist from bootstrap).
+    _seed_usage_agents(srv, ["agt1", "agt-a", "agt-b", "x", "y"], user_id=ctx["alice_id"])
     yield env_usage
+
+
+def _seed_usage_agents(srv: Any, agent_ids: list[str], *, user_id: int) -> None:
+    with srv.services.db.connect() as conn:
+        now = int(time.time())
+        for aid in agent_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO agents (agent_id, user_id, name, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (aid, user_id, aid, now, now),
+            )
 
 
 # --- repo direct -------------------------------------------------------------

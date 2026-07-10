@@ -2,17 +2,53 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
 import pytest
+from starlette.testclient import TestClient
 
 from tests.support.auth import bootstrap_admin
+from tests.support.http import ws_token
 
 
 @pytest.fixture
 async def env(env_fake_harness):
     yield env_fake_harness
+
+
+def _ws_turn_sync(app: object, agent_id: str, token: str, text: str) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+        f"/api/agents/{agent_id}/chat/ws?token={token}"
+    ) as ws:
+        ws.send_json(
+            {
+                "type": "user_turn",
+                "text": text,
+                "messages": [{"role": "user", "content": text}],
+            }
+        )
+        while True:
+            raw = ws.receive_text()
+            chunk = json.loads(raw)
+            chunks.append(chunk)
+            if chunk.get("type") in ("done", "error"):
+                break
+    return chunks
+
+
+async def _ws_turn(
+    client: object, agent_id: str, auth: dict[str, str], *, text: str = "Hello"
+) -> list[dict[str, Any]]:
+    return await asyncio.to_thread(
+        _ws_turn_sync,
+        client._octop_app,
+        agent_id,
+        ws_token(auth),
+        text,  # type: ignore[attr-defined]
+    )
 
 
 async def test_full_golden_path(env: Any) -> None:
@@ -48,8 +84,16 @@ async def test_full_golden_path(env: Any) -> None:
         json={
             "name": "openai",
             "kind": "openai",
+            "base_url": "https://api.openai.com/v1",
             "api_key": "sk-x",
-            "model": "gpt-4o",
+            "models": [
+                {
+                    "id": "gpt-4o",
+                    "name": "GPT-4o",
+                    "enabled": True,
+                    "input": ["text"],
+                }
+            ],
         },
     )
     assert r.status_code == 201
@@ -60,11 +104,10 @@ async def test_full_golden_path(env: Any) -> None:
     alice_tok = r.json()["access_token"]
     alice_auth = {"Authorization": f"Bearer {alice_tok}"}
 
-    # 6) admin creates an agent (agents are global, admin-only)
-    admin_auth = auth  # auth is already admin auth from step 2
+    # 6) alice creates her own agent and chats on it (must own the agent to connect)
     r = await c.post(
         "/api/agents",
-        headers=admin_auth,
+        headers=alice_auth,
         json={
             "name": "bot",
             "persona_mbti": "INTJ",
@@ -72,23 +115,10 @@ async def test_full_golden_path(env: Any) -> None:
         },
     )
     assert r.status_code == 201, r.text
-    aid = r.json()["id"]
+    aid = r.json()["agent_id"]
 
-    # 7) alice opens a chat stream
-    chunks: list[dict[str, Any]] = []
-    async with c.stream(
-        "POST",
-        f"/api/agents/{aid}/chat/stream",
-        headers=alice_auth,
-        json={
-            "session_key": "ui-1",
-            "messages": [{"role": "user", "content": "Hello"}],
-        },
-    ) as resp:
-        assert resp.status_code == 200
-        async for line in resp.aiter_lines():
-            if line.startswith("data:"):
-                chunks.append(json.loads(line[len("data:") :].strip()))
+    # 7) alice opens a chat stream (WebSocket transport)
+    chunks = await _ws_turn(c, aid, alice_auth, text="Hello")
     assert any(ch.get("type") == "token" for ch in chunks)
     assert chunks[-1]["type"] == "done"
 
@@ -131,6 +161,7 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
         json={
             "name": "openai",
             "kind": "openai",
+            "base_url": "https://api.openai.com/v1",
             "api_key": "sk-test",
             "models": [{"id": "gpt-4o", "name": "GPT-4o", "enabled": True, "input": ["text"]}],
         },
@@ -146,14 +177,14 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     r = await c.post("/api/auth/login", json={"username": "bob", "password": "pw"})
     bob_auth = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
-    # 3) list experts — "default" must be present
+    # 3) list experts — the default expert must be present
     r = await c.get("/api/experts", headers=bob_auth)
     assert r.status_code == 200
     expert_ids = [e["id"] for e in r.json()]
-    assert "default" in expert_ids
+    assert "general-assistant" in expert_ids
 
     # 4) get expert detail — must include file_contents
-    r = await c.get("/api/experts/default", headers=bob_auth)
+    r = await c.get("/api/experts/general-assistant", headers=bob_auth)
     assert r.status_code == 200
     expert = r.json()
     assert "file_contents" in expert and len(expert["file_contents"]) > 0
@@ -173,7 +204,7 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
 
     # 7) create agent from expert with default_model
     r = await c.post(
-        "/api/agents/from-expert/default",
+        "/api/agents/from-expert/general-assistant",
         headers=bob_auth,
         json={
             "name": "my-default-bot",
@@ -182,37 +213,22 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    agent_id = body["id"]
-    assert body["expert_id"] == "default"
-    assert body["icon_name"] is not None or body.get("icon_name") is None  # may be None for default
+    agent_id = body["agent_id"]
+    assert body["expert_id"] == "general-assistant"
     # Agent starts in non-running state (autostart=False)
     assert body["state"] in {"running", "failed", "stopped", "unknown"}
 
     # Verify config stored correctly
     rows = (await c.get("/api/agents", headers=bob_auth)).json()
-    agent_row = next(a for a in rows if a["id"] == agent_id)
+    agent_row = next(a for a in rows if a["agent_id"] == agent_id)
     assert agent_row["default_model"] == default_model_val
-    assert agent_row["config"]["expert_id"] == "default"
+    assert agent_row["config"]["expert_id"] == "general-assistant"
 
     # 8) start the agent
     r = await c.post(f"/api/agents/{agent_id}/start", headers=bob_auth)
     assert r.status_code == 204, r.text
 
-    # 9) chat — stream a message and verify we get tokens back
-    chunks: list[dict[str, Any]] = []
-    async with c.stream(
-        "POST",
-        f"/api/agents/{agent_id}/chat/stream",
-        headers=bob_auth,
-        json={
-            "session_key": "test-session",
-            "messages": [{"role": "user", "content": "你好"}],
-        },
-    ) as resp:
-        assert resp.status_code == 200, await resp.aread()
-        async for line in resp.aiter_lines():
-            if line.startswith("data:"):
-                chunks.append(json.loads(line[len("data:") :].strip()))
-
+    # 9) chat — stream a message and verify we get tokens back (WebSocket transport)
+    chunks = await _ws_turn(c, agent_id, bob_auth, text="你好")
     assert any(ch.get("type") == "token" for ch in chunks), f"no token chunks: {chunks}"
     assert chunks[-1]["type"] == "done"

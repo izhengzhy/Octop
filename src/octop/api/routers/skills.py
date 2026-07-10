@@ -701,9 +701,10 @@ async def hub_search_skills(
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
-    # Verify the agent exists and belongs to this user.
-    await _ctx(agent_id, user=user, as_user=as_user, server=server)
-
+    # Verify the agent exists and belongs to this user. The skillhub CLI
+    # runs globally, so we only need an existence/ownership check here —
+    # the agent need not be running (unlike chat/workspace endpoints).
+    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     skillhub_bin = await _ensure_skillhub_cli()
     query = q.strip() or "a"
     # Note: --json is not supported by this CLI version; parse text output instead.
@@ -754,7 +755,7 @@ async def hub_rankings(
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
-    await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
 
     rtype = type if type in _RANKING_TYPES else "all"
     skillhub_bin = await _ensure_skillhub_cli(require_rankings=True)

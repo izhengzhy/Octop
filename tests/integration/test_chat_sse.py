@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 import pytest
+from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from tests.support.app import octop_client
 from tests.support.auth import (
@@ -36,8 +38,28 @@ async def env(tmp_octop_home: Path) -> AsyncIterator[Any]:
         admin_auth = await auth_header(c)
         await seed_openai_provider(c, admin_auth)
         users = await ensure_users(c, admin_auth, "alice", "bob")
-        aid = await create_agent(c, admin_auth)
+        aid = await create_agent(c, users["alice"])
         yield c, srv, fake, users["alice"], users["bob"], aid
+
+
+def _consume_ws_turn_sync(
+    app: object,
+    aid: str,
+    token: str,
+    body: dict[str, Any],
+) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+        f"/api/agents/{aid}/chat/ws?token={token}"
+    ) as ws:
+        ws.send_json(body)
+        while True:
+            raw = ws.receive_text()
+            chunk = json.loads(raw)
+            chunks.append(chunk)
+            if chunk.get("type") in ("done", "error"):
+                break
+    return chunks
 
 
 async def _consume_ws_turn(
@@ -59,16 +81,15 @@ async def _consume_ws_turn(
     if extra:
         body.update(extra)
 
-    chunks: list[dict[str, Any]] = []
-    async with c.websocket_connect(f"/api/agents/{aid}/chat/ws?token={ws_token(auth)}") as ws:
-        await ws.send_json(body)
-        while True:
-            raw = await ws.receive_text()
-            chunk = json.loads(raw)
-            chunks.append(chunk)
-            if chunk.get("type") in ("done", "error"):
-                break
-    return chunks
+    # Run the blocking starlette TestClient session in a worker thread so the
+    # server's event loop stays free to process the turn (see ws_chat_turn).
+    return await asyncio.to_thread(
+        _consume_ws_turn_sync,
+        c._octop_app,  # type: ignore[attr-defined]
+        aid,
+        ws_token(auth),
+        body,
+    )
 
 
 async def test_ws_emits_chunks_then_done(env: Any) -> None:
@@ -82,10 +103,8 @@ async def test_ws_emits_chunks_then_done(env: Any) -> None:
 
 async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
     c, srv, _fake, alice_auth, _bob_auth, aid = env
-    boom = FakeHarnessAgent(raise_on_stream=RuntimeError("upstream blew up"))
-    entry = srv.app_runtime.agent_registry._entries.get(aid)  # noqa: SLF001
-    if entry is not None:
-        entry.agent = boom
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.raise_on_stream = RuntimeError("upstream blew up")
 
     chunks = await _consume_ws_turn(c, aid, alice_auth, text="err")
     assert chunks[-1]["type"] == "error"
@@ -93,18 +112,24 @@ async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
 
 async def test_ws_bad_agent_rejected(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, _aid = env
-    with pytest.raises(httpx.HTTPError):
-        async with c.websocket_connect(
+    with (
+        pytest.raises(WebSocketDisconnect),
+        TestClient(c._octop_app).websocket_connect(  # type: ignore[attr-defined]
             f"/api/agents/01HMISSING0000000000000000/chat/ws?token={ws_token(alice_auth)}"
-        ):
-            pass
+        ),
+    ):
+        pass
 
 
 async def test_ws_cross_user_rejected(env: Any) -> None:
     c, _srv, _fake, _admin_auth, bob_auth, aid = env
-    with pytest.raises(httpx.HTTPError):
-        async with c.websocket_connect(f"/api/agents/{aid}/chat/ws?token={ws_token(bob_auth)}"):
-            pass
+    with (
+        pytest.raises(WebSocketDisconnect),
+        TestClient(c._octop_app).websocket_connect(  # type: ignore[attr-defined]
+            f"/api/agents/{aid}/chat/ws?token={ws_token(bob_auth)}"
+        ),
+    ):
+        pass
 
 
 async def test_ws_accepts_skills_and_model(env: Any) -> None:

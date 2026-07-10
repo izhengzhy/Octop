@@ -218,7 +218,9 @@ async def test_create_session_503_when_env_broken(env: Any) -> None:
         r = await c.post("/api/browser/sessions", headers=auth)
     assert r.status_code == 503
     body = r.json()
-    assert "chromium" in body["error"]["message"].lower()
+    # The specific env reason is surfaced via ``details`` (the message is a
+    # generic localized string per the i18n design).
+    assert "chromium" in body["error"]["details"]["error"].lower()
 
 
 # --- cross-user isolation --------------------------------------------------

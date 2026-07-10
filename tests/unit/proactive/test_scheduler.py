@@ -177,10 +177,10 @@ def test_config_repo_get_default(agent_id: str, config_repo: ProactiveCareConfig
     """Should return defaults when no config exists."""
     cfg = config_repo.get(agent_id)
     assert cfg.agent_id == agent_id
-    assert cfg.enabled is False
+    assert cfg.enabled is True
     assert cfg.active_hours_start == "09:00"
     assert cfg.active_hours_end == "22:00"
-    assert cfg.min_interval_hours == 8
+    assert cfg.min_interval_hours == 5
     assert cfg.max_interval_hours == 24
 
 

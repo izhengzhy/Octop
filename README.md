@@ -8,11 +8,11 @@
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white" /></a>
-  <a href="https://github.com/TencentCloud/orca/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
+  <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
   <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.1.0-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
-  <a href="https://github.com/TencentCloud/orca"><img alt="GitHub stars" src="https://img.shields.io/github/stars/orcakit/orca?style=social" /></a>
+  <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
 </p>
 
 <p align="center">
@@ -200,10 +200,10 @@ Open **http://127.0.0.1:8088** — default credentials are `admin` / `octop` (ch
 
 ```bash
 # Build and start
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # Or build manually
-bash deploy/docker_build.sh
+bash docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -256,7 +256,7 @@ See [`.env.example`](.env.example) for the full list.
 | Local script | macOS / Linux | `bash scripts/install.sh` |
 | Local script | Windows | `scripts\install.bat` or `install.ps1` |
 | PyPI | Any | `pip install octop` or `pip install "octop[browser]"` |
-| Docker | Any | `deploy/docker-compose.yml` |
+| Docker | Any | `docker/docker-compose.yml` |
 
 All install scripts provision an isolated environment at `~/.octop/venv` and a `~/.octop/bin/octop` wrapper — they do not touch system Python.
 
@@ -387,7 +387,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-deploy/        Docker Compose, entrypoint, build & deploy scripts
+docker/        Docker Compose, entrypoint, build & deploy scripts
 tests/         unit/ + integration/
 ```
 

@@ -474,10 +474,12 @@ async def create_session(
     env = _probe_env()
     if not env["playwright"] or not env["browsers_ok"]:
         # 503: the *dependency* is missing, not the request itself.
+        reason = env["error"] or "browser environment not ready"
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
-            env["error"] or "browser environment not ready",
+            reason,
             status=503,
+            details={"error": reason},
         )
 
     from playwright.async_api import async_playwright  # noqa: PLC0415

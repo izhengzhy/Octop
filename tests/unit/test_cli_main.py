@@ -20,7 +20,7 @@ def test_user_group_help() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["user", "--help"])
     assert result.exit_code == 0
-    for cmd in ("login", "create", "list", "passwd", "role", "disable", "delete"):
+    for cmd in ("create", "list", "passwd", "role", "disable", "delete"):
         assert cmd in result.output
 
 
@@ -82,33 +82,24 @@ def test_channel_list_uses_root_agent_fallback(monkeypatch) -> None:
     (or OCTOP_AGENT env) supplies a fallback when not given inline."""
     captured: dict[str, str] = {}
 
-    class _FakeResp:
-        status_code = 200
+    def _fake_resolve(*a, **k) -> int:
+        return 1
 
-        @staticmethod
-        def json() -> list[dict[str, str]]:
-            return []
-
-    class _FakeClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def get(self, url, params=None):
-            captured["url"] = url
-            return _FakeResp()
+    def _fake_list(agent_id, *, home=None):
+        captured["agent_id"] = agent_id
+        return []
 
     import octop.cli.commands.channel as channel_cmd
+    from octop.cli.support import offline_ops as offline_mod
 
-    monkeypatch.setattr(channel_cmd, "_client", lambda: _FakeClient())
+    monkeypatch.setattr(channel_cmd, "resolve_cli_acting_user_id", _fake_resolve)
+    monkeypatch.setattr(offline_mod, "list_channels_offline", _fake_list)
 
     runner = CliRunner()
     # No --agent on the subcommand; root --agent supplies it.
     result = runner.invoke(cli, ["--agent", "AID-FROM-ROOT", "channel", "list"])
     assert result.exit_code == 0, result.output
-    assert captured["url"] == "/api/agents/AID-FROM-ROOT/channels"
+    assert captured["agent_id"] == "AID-FROM-ROOT"
 
 
 def test_channel_list_without_agent_errors() -> None:
@@ -129,26 +120,17 @@ def test_channel_list_json_emits_dump(monkeypatch) -> None:
 
     payload = [{"id": "01", "kind": "feishu", "enabled": True}]
 
-    class _FakeResp:
-        status_code = 200
+    def _fake_resolve(*a, **k) -> int:
+        return 1
 
-        @staticmethod
-        def json() -> list[dict[str, str]]:
-            return payload
-
-    class _FakeClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def get(self, url, params=None):
-            return _FakeResp()
+    def _fake_list(agent_id, *, home=None):
+        return payload
 
     import octop.cli.commands.channel as channel_cmd
+    from octop.cli.support import offline_ops as offline_mod
 
-    monkeypatch.setattr(channel_cmd, "_client", lambda: _FakeClient())
+    monkeypatch.setattr(channel_cmd, "resolve_cli_acting_user_id", _fake_resolve)
+    monkeypatch.setattr(offline_mod, "list_channels_offline", _fake_list)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["--json", "--agent", "AID", "channel", "list"])
@@ -167,26 +149,12 @@ def test_user_list_json_emits_dump(monkeypatch) -> None:
 
     payload = [{"id": 1, "username": "alice", "role": "user", "disabled": False}]
 
-    class _FakeResp:
-        status_code = 200
+    def _fake_list(*, home=None):
+        return payload
 
-        @staticmethod
-        def json() -> list[dict[str, str]]:
-            return payload
+    from octop.cli.support import offline_ops as offline_mod
 
-    class _FakeClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def get(self, url, params=None):
-            return _FakeResp()
-
-    import octop.cli.commands.user as user_cmd
-
-    monkeypatch.setattr(user_cmd, "_client", lambda: _FakeClient())
+    monkeypatch.setattr(offline_mod, "list_users_offline", _fake_list)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["--json", "user", "list"])

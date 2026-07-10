@@ -63,6 +63,9 @@ def _repair_legacy_schema(db: DBPool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
         _ensure_column(db, "users", "locale", "TEXT NOT NULL DEFAULT 'zh'")
+        _ensure_column(db, "users", "login_failed_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, "users", "login_locked_until", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, "users", "preferences_json", "TEXT NOT NULL DEFAULT '{}'")
     if _table_exists(db, "cron_jobs"):
         _ensure_column(
             db,

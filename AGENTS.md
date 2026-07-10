@@ -57,7 +57,7 @@ No external queue. No required services beyond an LLM provider.
 High-level tree — see [§5 Module boundaries](#5-module-boundaries) for what each folder owns and what it may import.
 
 ```
-Octop (`orca/` workspace directory)     Python package root (`src/octop/`)
+Octop (`octop/` workspace directory)     Python package root (`src/octop/`)
   config.py
   launch.py                   composition root: OctopServer + FastAPI + uvicorn
   i18n/                       locale JSON bundles + tr() + domain helpers

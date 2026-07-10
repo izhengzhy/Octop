@@ -196,6 +196,6 @@ async def test_load_checkpoint_messages_falls_back_to_graph_state() -> None:
             return_value=MagicMock(values={"messages": [human]}),
         )
 
-    msgs = await _load_checkpoint_messages(Harness(), "thr_x", limit=10)
+    msgs, _has_more = await _load_checkpoint_messages(Harness(), "thr_x", limit=10)
     assert len(msgs) == 1
     assert msgs[0].content == "fallback hello"
