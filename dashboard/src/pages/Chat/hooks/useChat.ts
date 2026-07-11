@@ -551,6 +551,7 @@ export function useChat(
   const {
     messages,
     isStreaming,
+    thinkingStartedAt,
     runUsage,
     contextUsage,
     historyHasMore,
@@ -740,6 +741,7 @@ export function useChat(
   return {
     messages,
     isStreaming,
+    thinkingStartedAt,
     runUsage,
     contextUsage,
     historyLoading,

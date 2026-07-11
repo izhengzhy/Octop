@@ -166,6 +166,7 @@ function ChatPageInner() {
   const {
     messages,
     isStreaming,
+    thinkingStartedAt,
     historyLoading,
     historyHasMore,
     historyLoadingMore,
@@ -536,6 +537,7 @@ function ChatPageInner() {
                 historyLoadingMore={historyLoadingMore}
                 onLoadMoreHistory={() => void loadMoreHistory()}
                 isStreaming={isStreaming}
+                thinkingStartedAt={thinkingStartedAt}
                 sessionKey={activeThreadId ?? undefined}
                 onCancel={cancelStream}
                 onRegenerate={handleRegenerate}
