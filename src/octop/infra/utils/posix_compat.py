@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import errno
 import os
-import pwd
 import signal
 import struct
 from typing import IO, Any
@@ -42,10 +41,14 @@ def chown(path: str | os.PathLike[str], uid: int, gid: int = -1) -> None:
 
 
 def getpwnam(name: str) -> Any:
+    import pwd
+
     return pwd.getpwnam(name)
 
 
 def getpwuid(uid: int) -> Any:
+    import pwd
+
     return pwd.getpwuid(uid)
 
 
