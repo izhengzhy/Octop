@@ -96,18 +96,21 @@ export function useAutoScroll({
     return containerRef.current;
   }, [virtual, containerRef]);
 
-  const armProgrammaticGuard = useCallback((ms = PROGRAMMATIC_GUARD_MS) => {
-    isProgrammaticRef.current = true;
-    if (guardTimerRef.current !== null) clearTimeout(guardTimerRef.current);
-    guardTimerRef.current = setTimeout(() => {
-      guardTimerRef.current = null;
-      isProgrammaticRef.current = false;
-      const scroller = getScroller();
-      if (scroller) {
-        prevScrollTopRef.current = scroller.scrollTop;
-      }
-    }, ms);
-  }, [getScroller]);
+  const armProgrammaticGuard = useCallback(
+    (ms = PROGRAMMATIC_GUARD_MS) => {
+      isProgrammaticRef.current = true;
+      if (guardTimerRef.current !== null) clearTimeout(guardTimerRef.current);
+      guardTimerRef.current = setTimeout(() => {
+        guardTimerRef.current = null;
+        isProgrammaticRef.current = false;
+        const scroller = getScroller();
+        if (scroller) {
+          prevScrollTopRef.current = scroller.scrollTop;
+        }
+      }, ms);
+    },
+    [getScroller],
+  );
 
   const isAtBottom = useCallback((): boolean => {
     const c = getScroller();
@@ -187,7 +190,7 @@ export function useAutoScroll({
     scrollToBottom(smooth);
   }, [scrollToBottom, smooth]);
 
-  const handleAtBottomChange = useCallback((_bottom: boolean) => {
+  const handleAtBottomChange = useCallback(() => {
     // Virtuoso may report at-bottom after programmatic follow scrolls.
     // Resuming follow is handled only by user scroll/wheel/touch listeners.
   }, []);
