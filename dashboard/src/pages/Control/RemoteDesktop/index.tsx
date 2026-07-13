@@ -119,7 +119,19 @@ export default function RemoteDesktopPage() {
   const [frameReady, setFrameReady] = useState(false);
   const { status, connect, sendEvent, disconnect } = useDesktopStream();
 
-  const envReady = envStatus?.setup_state === "ready" && envStatus.ok;
+  const setupInstalled = envStatus?.setup_state === "ready";
+  const envReady = Boolean(setupInstalled && envStatus?.ok);
+  const permissionLabels = (envStatus?.permissions_needed ?? []).map((p) =>
+    p === "screen_recording"
+      ? t("remoteDesktop.permScreenRecording", "屏幕录制")
+      : p === "accessibility"
+      ? t("remoteDesktop.permAccessibility", "辅助功能")
+      : p,
+  );
+  const needsMacPermissions =
+    Boolean(setupInstalled) &&
+    envStatus?.platform === "darwin" &&
+    (envStatus?.permissions_needed?.length ?? 0) > 0;
   const canUninstall =
     Boolean(envStatus) &&
     envStatus?.setup_state !== "deps_missing" &&
@@ -415,11 +427,20 @@ export default function RemoteDesktopPage() {
 
   const handleConnect = useCallback(() => {
     if (!envReady) {
+      if (needsMacPermissions) {
+        message.warning(
+          t(
+            "remoteDesktop.connectDisabledPerms",
+            "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
+          ),
+        );
+        return;
+      }
       openEnvModal();
       return;
     }
     startStream();
-  }, [envReady, openEnvModal, startStream]);
+  }, [envReady, needsMacPermissions, openEnvModal, startStream, t]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -770,6 +791,24 @@ export default function RemoteDesktopPage() {
       );
     }
 
+    if (needsMacPermissions) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          message={t(
+            "remoteDesktop.macPermissionsTitle",
+            "需要 macOS 系统权限",
+          )}
+          description={t("remoteDesktop.macPermissionsDesc", {
+            permissions: permissionLabels.join(
+              t("remoteDesktop.permJoin", "、"),
+            ),
+          })}
+        />
+      );
+    }
+
     if (envReady) {
       return (
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
@@ -787,12 +826,24 @@ export default function RemoteDesktopPage() {
             }
             style={{ padding: "8px 0" }}
           />
-          <Alert
-            type="info"
-            showIcon
-            message={t("remoteDesktop.resourceInfoTitle", "关于资源占用")}
-            description={t("remoteDesktop.resourceInfoDesc")}
-          />
+          {envStatus?.native_capture ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t("remoteDesktop.nativeReadyTitle", "本机桌面已就绪")}
+              description={t(
+                "remoteDesktop.nativeReadyDesc",
+                "将直接捕获本机屏幕并注入键鼠，无需安装虚拟桌面。",
+              )}
+            />
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              message={t("remoteDesktop.resourceInfoTitle", "关于资源占用")}
+              description={t("remoteDesktop.resourceInfoDesc")}
+            />
+          )}
         </Space>
       );
     }
@@ -830,12 +881,28 @@ export default function RemoteDesktopPage() {
         </Button>
       );
     }
+    if (needsMacPermissions) {
+      return (
+        <Space>
+          <Button onClick={closeEnvModal}>{t("common.close")}</Button>
+          <Button
+            type="primary"
+            loading={envLoading}
+            onClick={() => void refreshEnv()}
+          >
+            {t("remoteDesktop.recheck", "重新检测")}
+          </Button>
+        </Space>
+      );
+    }
     if (!envReady) {
       return (
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
           <Button type="primary" onClick={startInstall}>
-            {t("remoteDesktop.install", "安装桌面环境")}
+            {envStatus?.native_capture
+              ? t("remoteDesktop.installDeps", "安装依赖")
+              : t("remoteDesktop.install", "安装桌面环境")}
           </Button>
         </Space>
       );
@@ -870,7 +937,16 @@ export default function RemoteDesktopPage() {
       </Tooltip>
       {!isStreaming ? (
         <Tooltip
-          title={envReady ? undefined : t("remoteDesktop.connectDisabled")}
+          title={
+            envReady
+              ? undefined
+              : needsMacPermissions
+              ? t(
+                  "remoteDesktop.connectDisabledPerms",
+                  "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
+                )
+              : t("remoteDesktop.connectDisabled")
+          }
         >
           <Button
             size={isMobile ? "small" : "middle"}
@@ -923,30 +999,31 @@ export default function RemoteDesktopPage() {
       </Modal>
 
       <div className={styles.remoteDesktopPage}>
-        {envReady &&
-          !showStream &&
-          envStatus?.platform === "darwin" &&
-          envStatus.permissions_needed.length > 0 && (
-            <Alert
-              type="info"
-              showIcon
-              message={t(
-                "remoteDesktop.macPermissionsTitle",
-                "需要 macOS 系统权限",
-              )}
-              description={t("remoteDesktop.macPermissionsDesc", {
-                permissions: envStatus.permissions_needed
-                  .map((p) =>
-                    p === "screen_recording"
-                      ? t("remoteDesktop.permScreenRecording", "屏幕录制")
-                      : p === "accessibility"
-                      ? t("remoteDesktop.permAccessibility", "辅助功能")
-                      : p,
-                  )
-                  .join(t("remoteDesktop.permJoin", "、")),
-              })}
-            />
-          )}
+        {needsMacPermissions && !showStream && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t(
+              "remoteDesktop.macPermissionsTitle",
+              "需要 macOS 系统权限",
+            )}
+            description={t("remoteDesktop.macPermissionsDesc", {
+              permissions: permissionLabels.join(
+                t("remoteDesktop.permJoin", "、"),
+              ),
+            })}
+            style={{ marginBottom: 12 }}
+            action={
+              <Button
+                size="small"
+                loading={envLoading}
+                onClick={() => void refreshEnv()}
+              >
+                {t("remoteDesktop.recheck", "重新检测")}
+              </Button>
+            }
+          />
+        )}
         {envReady && !showStream && envStatus?.native_capture && (
           <Alert
             type="success"
@@ -975,6 +1052,11 @@ export default function RemoteDesktopPage() {
                 title={
                   envReady
                     ? t("remoteDesktop.connectTitle", "连接远程桌面")
+                    : needsMacPermissions
+                    ? t(
+                        "remoteDesktop.macPermissionsTitle",
+                        "需要 macOS 系统权限",
+                      )
                     : t("remoteDesktop.subtitle", "控制 Octop 主机操作系统桌面")
                 }
                 description={
@@ -983,6 +1065,12 @@ export default function RemoteDesktopPage() {
                         "remoteDesktop.connectIdleDesc",
                         "点击下方「连接」开始实时操控主机桌面",
                       )
+                    : needsMacPermissions
+                    ? t("remoteDesktop.macPermissionsGuideDesc", {
+                        permissions: permissionLabels.join(
+                          t("remoteDesktop.permJoin", "、"),
+                        ),
+                      })
                     : t(
                         "remoteDesktop.setupDesc",
                         "按以下步骤完成环境配置，即可在浏览器中远程操控主机桌面",
@@ -1001,6 +1089,28 @@ export default function RemoteDesktopPage() {
                           label: t(
                             "remoteDesktop.idleStep2",
                             "在画面中点击、拖动与输入，即可操控远程桌面",
+                          ),
+                        },
+                      ]
+                    : needsMacPermissions
+                    ? [
+                        {
+                          label: t(
+                            "remoteDesktop.macPermStep1",
+                            "打开「系统设置 → 隐私与安全性」",
+                          ),
+                        },
+                        {
+                          label: t("remoteDesktop.macPermStep2", {
+                            permissions: permissionLabels.join(
+                              t("remoteDesktop.permJoin", "、"),
+                            ),
+                          }),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.macPermStep3",
+                            "重启 Octop（octop run），再回到本页点击「重新检测」",
                           ),
                         },
                       ]
@@ -1032,6 +1142,13 @@ export default function RemoteDesktopPage() {
                         onClick: handleConnect,
                         icon: <PlugZap size={14} />,
                       }
+                    : needsMacPermissions
+                    ? {
+                        label: t("remoteDesktop.recheck", "重新检测"),
+                        onClick: () => void refreshEnv(),
+                        icon: <RefreshCw size={14} />,
+                        loading: envLoading,
+                      }
                     : {
                         label: t("remoteDesktop.checkInstallShort", "检查"),
                         onClick: openEnvModal,
@@ -1039,7 +1156,7 @@ export default function RemoteDesktopPage() {
                       }
                 }
                 secondaryAction={
-                  envReady && canUninstall
+                  (envReady || needsMacPermissions) && canUninstall
                     ? {
                         label: t("remoteDesktop.uninstall", "卸载"),
                         onClick: handleUninstall,
@@ -1066,15 +1183,6 @@ export default function RemoteDesktopPage() {
                   </Text>
                 </div>
               )}
-              {isStreaming && frameReady && (
-                <div className={styles.viewportOverlay}>
-                  <Tag color="green" style={{ margin: 0, fontSize: 11 }}>
-                    {status === "streaming"
-                      ? t("remoteDesktop.streaming", "推流中")
-                      : t("remoteDesktop.connecting", "连接中")}
-                  </Tag>
-                </div>
-              )}
               <StreamEdgeControls
                 visible={showEdgeControls}
                 isMobile={isMobile}
@@ -1083,6 +1191,11 @@ export default function RemoteDesktopPage() {
                   "remoteDesktop.openControls",
                   "控制与快捷操作",
                 )}
+                streamingLabel={
+                  status === "streaming"
+                    ? t("remoteDesktop.streaming", "推流中")
+                    : t("remoteDesktop.connecting", "连接中")
+                }
                 onFullscreen={() => void handleFullscreen()}
                 onOpenControls={openControlsDrawer}
               />

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -101,18 +102,71 @@ async def resolve_harness_session(
 
         shots = agent_outbound_screenshots_dir(server.paths, agent_id)
         harness_settings = harness_settings_for_screenshots_dir(shots)
+
+    from octop.infra.browser.setup import (  # noqa: PLC0415
+        prepare_harness_profile_for_launch,
+        resolve_browser_display,
+    )
+
+    await prepare_harness_profile_for_launch(profile)
+    # Virtual desktop (Xvnc :99) → headed Chrome so the window shows on
+    # remote desktop; otherwise keep auto (headless on servers without X).
+    display = resolve_browser_display()
+    launch_mode = "headed" if display else "auto"
+
+    # Fresh ProfileManager picks up any BROWSER_USE_PROFILES_DIR relocation
+    # done by prepare (default singleton is bound at import time).
+    from harness_browser.profile import ProfileManager  # noqa: PLC0415
+    from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
+
+    profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
+
     try:
         sess = await BrowserSession.create(
             profile=profile,
-            mode="auto",
+            mode=launch_mode,  # type: ignore[arg-type]
             settings=harness_settings,
+            profile_manager=profile_manager,
         )
     except Exception as exc:
-        raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            f"failed to attach browser profile {profile!r}: {exc}",
-            status=503,
-        ) from exc
+        # Chrome exit 21 / ProcessSingleton usually means a stale lock or a
+        # non-writable profile left by a previous root/non-root mismatch.
+        msg = str(exc)
+        if (
+            "returncode=21" in msg
+            or "ProcessSingleton" in msg
+            or "SingletonLock" in msg
+            or "profile directory" in msg.lower()
+            or "/run/user/" in msg
+        ):
+            logger.warning(
+                "Browser launch failed for %r (%s); recovering profile and retrying",
+                profile,
+                exc,
+            )
+            await prepare_harness_profile_for_launch(profile, force_recover=True)
+            display = resolve_browser_display()
+            launch_mode = "headed" if display else "auto"
+            profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
+            try:
+                sess = await BrowserSession.create(
+                    profile=profile,
+                    mode=launch_mode,  # type: ignore[arg-type]
+                    settings=harness_settings,
+                    profile_manager=profile_manager,
+                )
+            except Exception as retry_exc:
+                raise OctopError(
+                    ErrorCode.INTERNAL_ERROR,
+                    f"failed to attach browser profile {profile!r}: {retry_exc}",
+                    status=503,
+                ) from retry_exc
+        else:
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"failed to attach browser profile {profile!r}: {exc}",
+                status=503,
+            ) from exc
     _registry[profile] = sess
     return sess
 
